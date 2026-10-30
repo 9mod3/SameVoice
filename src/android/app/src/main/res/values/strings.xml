@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">同声 SameVoice</string>
+    <string name="channel_host">输出端播放</string>
+    <string name="channel_share">声音共享</string>
+    <string name="notification_stop">停止</string>
+</resources>
