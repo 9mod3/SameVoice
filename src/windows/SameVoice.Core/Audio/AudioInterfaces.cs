@@ -15,6 +15,17 @@ public interface IAudioCapture : IDisposable
     void Stop();
 }
 
+/// <summary>
+/// Optional high-quality capture path. Emits interleaved 48 kHz stereo PCM24
+/// (little-endian packed, 6 bytes per frame) when <see cref="Capture24Bit"/> is on.
+/// </summary>
+public interface IAudioCapture24 : IAudioCapture
+{
+    event Action<byte[], long>? DataAvailable24;
+    bool Supports24Bit { get; }
+    bool Capture24Bit { get; set; }
+}
+
 /// <summary>A platform playback sink. The callback fills a block of PCM16 frames.</summary>
 public interface IAudioOutput : IDisposable
 {
@@ -90,8 +101,18 @@ public sealed class StereoPcmConverter48k
     /// <returns>Interleaved stereo samples at 48 kHz.</returns>
     public short[] Convert(ReadOnlySpan<byte> input)
     {
+        float[] stereo = ConvertFloat(input);
+        if (stereo.Length == 0) return Array.Empty<short>();
+        var result = new short[stereo.Length];
+        for (int i = 0; i < stereo.Length; i++) result[i] = LinearResampler.ToPcm16(stereo[i]);
+        return result;
+    }
+
+    /// <summary>High-precision conversion for the 24-bit transport path.</summary>
+    public float[] ConvertFloat(ReadOnlySpan<byte> input)
+    {
         int frameSize = _sourceChannels * _bytesPerSample;
-        if (frameSize <= 0) return Array.Empty<short>();
+        if (frameSize <= 0) return Array.Empty<float>();
         int frames = input.Length / frameSize;
         _stereo.Clear();
         _stereo.EnsureCapacity(frames * 2);
@@ -105,9 +126,10 @@ public sealed class StereoPcmConverter48k
             _stereo.Add(right);
         }
 
-        if (_stereo.Count == 0) return Array.Empty<short>();
-        return _resampler.Process(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_stereo));
+        if (_stereo.Count == 0) return Array.Empty<float>();
+        return _resampler.ProcessFloat(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_stereo));
     }
+
 
     private float ReadChannel(ReadOnlySpan<byte> data, int channel)
     {
@@ -145,16 +167,26 @@ public sealed class LinearResampler
 
     public short[] Process(ReadOnlySpan<float> input)
     {
+        float[] floats = ProcessFloat(input);
+        if (floats.Length == 0) return Array.Empty<short>();
+        var result = new short[floats.Length];
+        for (int i = 0; i < floats.Length; i++) result[i] = ToPcm16(floats[i]);
+        return result;
+    }
+
+    /// <summary>Streaming resampler that preserves full float precision.</summary>
+    public float[] ProcessFloat(ReadOnlySpan<float> input)
+    {
         if (_ratio == 1.0 && _pendingCount == 0)
-            return FloatsToPcm16(input);
+            return input.ToArray();
 
         Append(input);
         int inputFrames = _pendingCount / _channels;
         if (inputFrames < 2)
-            return Array.Empty<short>();
+            return Array.Empty<float>();
 
         int estimated = Math.Max(0, (int)((inputFrames - 1 - _position) / _ratio));
-        var output = new List<short>(estimated * _channels);
+        var output = new List<float>(estimated * _channels);
 
         while (_position + 1.0 < inputFrames)
         {
@@ -164,8 +196,7 @@ public sealed class LinearResampler
             {
                 float a = _pending[i * _channels + c];
                 float b = _pending[(i + 1) * _channels + c];
-                float v = a + (b - a) * (float)frac;
-                output.Add(ToPcm16(v));
+                output.Add(a + (b - a) * (float)frac);
             }
             _position += _ratio;
         }
@@ -196,14 +227,7 @@ public sealed class LinearResampler
         _pendingCount += input.Length;
     }
 
-    private static short[] FloatsToPcm16(ReadOnlySpan<float> input)
-    {
-        var result = new short[input.Length];
-        for (int i = 0; i < input.Length; i++) result[i] = ToPcm16(input[i]);
-        return result;
-    }
-
-    private static short ToPcm16(float value)
+    internal static short ToPcm16(float value)
     {
         float clamped = Math.Clamp(value, -1f, 1f);
         return (short)Math.Round(clamped * 32767f);

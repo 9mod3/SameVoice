@@ -8,15 +8,19 @@ namespace SameVoice.App.Audio;
 /// Captures the Windows default playback endpoint in WASAPI loopback shared mode.
 /// This captures system audio from every application, not just SameVoice.
 /// </summary>
-public sealed class WasapiLoopbackCapture : IAudioCapture
+public sealed class WasapiLoopbackCapture : IAudioCapture24
 {
-    // Simple fixed source boost. The per-source volume on the output side can
-    // attenuate it again; the soft limiter prevents hard digital clipping.
-    private const float SourceBoost = 4.0f;
-    private const float BoostKnee = 0.85f;
+    // The dual-route edition captures an already-mixed virtual bus (B1), so it
+    // must not add another fixed boost. The send gain remains adjustable.
+    public float FixedBoost { get; set; } = 4.0f;
+    private const float BoostKnee = 0.98f;
 
     public event Action<short[], long>? DataAvailable;
+    public event Action<byte[], long>? DataAvailable24;
     public event Action<string>? Faulted;
+
+    public bool Supports24Bit => true;
+    public bool Capture24Bit { get; set; }
 
     public bool IsRunning => _running;
     public string? LastError { get; private set; }
@@ -24,7 +28,7 @@ public sealed class WasapiLoopbackCapture : IAudioCapture
     public float ExtraGain
     {
         get => _extraGain;
-        set => _extraGain = Math.Clamp(value, 0f, 2f);
+        set => _extraGain = Math.Clamp(value, 0f, 6f);
     }
 
     private readonly string _deviceId;
@@ -185,9 +189,21 @@ public sealed class WasapiLoopbackCapture : IAudioCapture
                     nextTimestampUs += durationUs;
                     _lastPacketAtMs = Environment.TickCount;
 
-                    short[] pcm = converter.Convert(byteBuffer.AsSpan(0, totalBytes));
-                    if (pcm.Length > 0)
-                        RaiseData(pcm, timestamp);
+                    if (Capture24Bit)
+                    {
+                        float[] hi = converter.ConvertFloat(byteBuffer.AsSpan(0, totalBytes));
+                        if (hi.Length > 0)
+                        {
+                            ApplyGain24(hi);
+                            RaiseData24(PcmCodec.EncodePcm24(hi), timestamp);
+                        }
+                    }
+                    else
+                    {
+                        short[] pcm = converter.Convert(byteBuffer.AsSpan(0, totalBytes));
+                        if (pcm.Length > 0)
+                            RaiseData(pcm, timestamp);
+                    }
 
                     hr = captureClient.GetNextPacketSize(out packetFrames);
                     if (hr < 0) Marshal.ThrowExceptionForHR(hr);
@@ -230,9 +246,35 @@ public sealed class WasapiLoopbackCapture : IAudioCapture
         }
     }
 
+    private void RaiseData24(byte[] pcm24, long timestamp)
+    {
+        try { DataAvailable24?.Invoke(pcm24, timestamp); }
+        catch (Exception e)
+        {
+            LastError = e.Message;
+        }
+    }
+
+    private void ApplyGain24(float[] pcm)
+    {
+        float gain = FixedBoost * _extraGain;
+        for (int i = 0; i < pcm.Length; i++)
+        {
+            float sample = pcm[i] * gain;
+            float abs = Math.Abs(sample);
+            if (abs > BoostKnee)
+            {
+                float over = (abs - BoostKnee) / (1f - BoostKnee);
+                float limited = BoostKnee + (1f - BoostKnee) * MathF.Tanh(over);
+                sample = MathF.CopySign(limited, sample);
+            }
+            pcm[i] = Math.Clamp(sample, -1f, 1f);
+        }
+    }
+
     private void ApplyFixedBoost(short[] pcm)
     {
-        float gain = SourceBoost * _extraGain;
+        float gain = FixedBoost * _extraGain;
         for (int i = 0; i < pcm.Length; i++)
         {
             float sample = pcm[i] * gain / 32768f;

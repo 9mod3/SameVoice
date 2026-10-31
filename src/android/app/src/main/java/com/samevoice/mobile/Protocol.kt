@@ -10,9 +10,13 @@ object Protocol {
     const val SAMPLE_RATE = 48_000
     const val CHANNELS = 2
     const val BITS = 16
+    const val HIGH_BITS = 24
     const val BYTES_PER_FRAME = 4
+    const val HIGH_BYTES_PER_FRAME = 6
     const val PACKET_FRAMES = 240
     const val PACKET_BYTES = 960
+    const val HIGH_PACKET_FRAMES = 120
+    const val HIGH_PACKET_BYTES = 720
     const val PACKET_MS = 5
     const val CONTROL_PORT = 47820
     const val DISCOVERY_PORT = 47821
@@ -52,12 +56,26 @@ data class HostOffer(
     val pinRequired: Boolean
 )
 
+enum class AudioQuality(val bits: Int, val label: String) {
+    STANDARD(16, "标准 48k/16-bit"),
+    HIGH(24, "高音质 48k/24-bit");
+
+    val bytesPerFrame: Int get() = Protocol.CHANNELS * bits / 8
+    val packetFrames: Int get() = if (this == HIGH) Protocol.HIGH_PACKET_FRAMES else Protocol.PACKET_FRAMES
+    val packetBytes: Int get() = packetFrames * bytesPerFrame
+
+    companion object {
+        fun fromBits(value: Int?): AudioQuality = if (value == 24) HIGH else STANDARD
+    }
+}
+
 data class Welcome(
     val session: Int,
     val token: Long,
     val audioPort: Int,
     val hostName: String,
-    val mode: HostMode
+    val mode: HostMode,
+    val bits: Int = 16
 )
 
 data class AudioPacket(
@@ -189,12 +207,13 @@ object Discovery {
 }
 
 object Control {
-    fun hello(name: String, platform: String, pin: String = ""): ByteArray = JSONObject().apply {
+    fun hello(name: String, platform: String, pin: String = "", bits: Int = 16): ByteArray = JSONObject().apply {
         put("type", "hello")
         put("proto", Protocol.VERSION)
         put("name", name)
         put("platform", platform)
         put("pin", pin)
+        put("bits", bits)
     }.toString().toByteArray(Charsets.UTF_8)
 
     fun welcome(
@@ -202,7 +221,8 @@ object Control {
         token: Long,
         audioPort: Int,
         hostName: String,
-        mode: HostMode
+        mode: HostMode,
+        bits: Int = 16
     ): ByteArray = JSONObject().apply {
         put("type", "welcome")
         put("proto", Protocol.VERSION)
@@ -212,6 +232,7 @@ object Control {
         put("name", hostName)
         put("mode", mode.wire)
         put("sampleRate", Protocol.SAMPLE_RATE)
+        put("bits", bits)
     }.toString().toByteArray(Charsets.UTF_8)
 
     fun simple(type: String): ByteArray = JSONObject().put("type", type).toString().toByteArray(Charsets.UTF_8)
@@ -234,13 +255,18 @@ object Control {
             val token = java.lang.Long.parseUnsignedLong(json.getString("token"), 16)
             val port = json.getInt("audioPort")
             if (port <= 0 || port > 65535) null
-            else Welcome(
-                session = json.getInt("session"),
-                token = token,
-                audioPort = port,
-                hostName = json.optString("name", "SameVoice"),
-                mode = HostMode.fromWire(json.optString("mode"))
-            )
+            else {
+                val bits = json.optInt("bits", 16)
+                if (bits != 16 && bits != 24) null
+                else Welcome(
+                    session = json.getInt("session"),
+                    token = token,
+                    audioPort = port,
+                    hostName = json.optString("name", "SameVoice"),
+                    mode = HostMode.fromWire(json.optString("mode")),
+                    bits = bits
+                )
+            }
         }
     } catch (_: Exception) {
         null

@@ -31,11 +31,11 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
-| Windows 1.2.0 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 两端音量任意独立，需 Voicemeeter/Scream |
-| Android 10+ | `dist/android/SameVoice-1.1.1.apk` | 使用仓库内演示签名，允许侧载 |
-| Android（调试版） | `dist/android/SameVoice-1.1.1-debug.apk` | 调试签名，便于 logcat |
+| Windows 1.3.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 静音后调音量保持静音；48k/24-bit 可选 |
+| Android 10+ | `dist/android/SameVoice-1.1.2.apk` | 使用仓库内演示签名，允许侧载 |
+| Android（调试版） | `dist/android/SameVoice-1.1.2-debug.apk` | 调试签名，便于 logcat |
 
-两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.1 APK。完整选择说明见
+两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.2 APK。完整选择说明见
 [`dist/README.txt`](dist/README.txt)。
 
 ### 1. 选择版本
@@ -277,5 +277,9 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Windows 1.1.3：Windows 音源采集后固定放大 4 倍（约 +12 dB），加入软限幅；不做自动补偿，本机音量仍会影响输出电平。
 - Android 1.1.0：新增 Scream 虚拟声卡接收模式（UDP 组播 239.255.77.77:4010），可在 Android 直接播放 Windows Scream 流；同版本保留 1.0.4 的每路音量滑杆。
 - Windows 1.2.0：分成「本机静音版」和「双路由版」。前者提供本机端点静音；后者提供采集/本机输出设备选择、本机音量与发送增益独立控制。
-- Android 1.1.1：新增输出端「全满」按钮（主音量 100% + 每路音源 100%）。
+- Windows 1.2.1（双路由）：取消固定 4 倍源增益，B1 直通；软限幅拐点 0.98；默认发送增益 100%，保留动态。
+- Windows 1.2.2（双路由）：固定 3 倍源增益，发送增益仍可调；在响度和动态之间折中。
+- Windows 1.2.3（双路由）：取消固定增益，发送增益范围 0–600%；默认 100% 直通。
+- Windows 1.3.0 / Android 1.1.2：新增标准 48k/16-bit 和高音质 48k/24-bit 传输选项；高音质使用 120 帧/包（2.5 ms）避免 UDP 分片，Android 输出改为浮点混音。
+- Windows 1.3.1：本机静音后调节本机音量不再自动解除静音，调完音量后恢复静音状态。
 - 测试断言：54/54 通过。

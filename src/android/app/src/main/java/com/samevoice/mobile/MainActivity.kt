@@ -50,6 +50,7 @@ class MainActivity : Activity() {
     private lateinit var deviceName: String
     private var selectedMode = HostMode.BALANCED
     private var masterVolume = 0.8f
+    private var hostQuality = AudioQuality.HIGH
     private var hosts: List<HostOffer> = emptyList()
     private var scanning = false
     private var pendingHost: HostOffer? = null
@@ -85,6 +86,8 @@ class MainActivity : Activity() {
     private lateinit var lowOption: LinearLayout
     private lateinit var syncDot: TextView
     private lateinit var lowDot: TextView
+    private lateinit var qualityStandardPill: TextView
+    private lateinit var qualityHighPill: TextView
 
     private lateinit var shareBadgeContainer: LinearLayout
     private lateinit var shareBadgeDot: TextView
@@ -148,6 +151,7 @@ class MainActivity : Activity() {
                 ?: NetUtil.defaultDeviceName()
             selectedMode = HostMode.fromWire(prefs.getString("mode", null))
             masterVolume = prefs.getFloat("volume", 0.8f).coerceIn(0f, 1f)
+            hostQuality = AudioQuality.fromBits(prefs.getInt("hostQualityBits", 24))
 
             setContentView(buildUi())
             updateRoleTabs()
@@ -354,6 +358,37 @@ class MainActivity : Activity() {
             margins(top = 9)
         })
         page.addView(modeCard)
+
+        // Quality card
+        val qualityCard = card(padding = 18)
+        qualityCard.margins(top = 14)
+        qualityCard.addView(text("传输音质", 14f, Palette.TEXT, medium = true))
+        qualityCard.addView(text(
+            "高音质使用 48 kHz / 24-bit PCM；音源和输出端都选高音质时生效，否则自动回退标准。",
+            10f, Palette.MUTED
+        ).apply {
+            margins(top = 6)
+            setLineSpacing(0f, 1.3f)
+        })
+        val qualityRow = horizontal().apply { margins(top = 11) }
+        qualityStandardPill = pill("标准 16-bit", Palette.MUTED, 0xFF20293B.toInt()).apply {
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setOnClickListener { selectHostQuality(AudioQuality.STANDARD) }
+        }
+        qualityHighPill = pill("高音质 24-bit", Palette.MUTED, 0xFF20293B.toInt()).apply {
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setOnClickListener { selectHostQuality(AudioQuality.HIGH) }
+        }
+        qualityRow.addView(qualityStandardPill)
+        qualityRow.addView(qualityHighPill, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(8) })
+        qualityCard.addView(qualityRow)
+        qualityCard.addView(text("切换音质需要重启输出端。", 9.5f, Palette.MUTED).apply {
+            margins(top = 9)
+        })
+        page.addView(qualityCard)
+        updateQualitySelection()
 
         // Status card
         val statusCard = card(padding = 18)
@@ -723,6 +758,34 @@ class MainActivity : Activity() {
         lowDot.text = if (selectedMode == HostMode.LOW) "●" else "○"
         lowDot.setTextColor(if (selectedMode == HostMode.LOW) Palette.MINT else 0xFF7C8AA0.toInt())
         if (::hostModePill.isInitialized) hostModePill.text = selectedMode.label
+    }
+
+    private fun selectHostQuality(quality: AudioQuality) {
+        if (hostQuality == quality) return
+        hostQuality = quality
+        prefs.edit().putInt("hostQualityBits", quality.bits).apply()
+        updateQualitySelection()
+        if (ServiceHub.hostRunning || ServiceHub.hostStarting) {
+            toast("音质已保存，重启输出端后生效")
+        }
+    }
+
+    private fun updateQualitySelection() {
+        if (!::qualityStandardPill.isInitialized) return
+        val selectedBg = 0xFF1D2A44.toInt()
+        val idleBg = 0xFF20293B.toInt()
+        qualityStandardPill.background = roundedBackground(
+            if (hostQuality == AudioQuality.STANDARD) selectedBg else idleBg, 99
+        )
+        qualityStandardPill.setTextColor(
+            if (hostQuality == AudioQuality.STANDARD) Palette.MINT else Palette.MUTED
+        )
+        qualityHighPill.background = roundedBackground(
+            if (hostQuality == AudioQuality.HIGH) selectedBg else idleBg, 99
+        )
+        qualityHighPill.setTextColor(
+            if (hostQuality == AudioQuality.HIGH) Palette.MINT else Palette.MUTED
+        )
     }
 
     // ---------------------------------------------------------------- state refresh
@@ -1397,7 +1460,7 @@ class MainActivity : Activity() {
         })
         box.addView(divider())
         box.addView(text(
-            "同声 SameVoice 1.1\n" +
+            "同声 SameVoice 1.1.2\n" +
                 "音频 48 kHz · 立体声 · PCM 16-bit\n" +
                 "共享音频模式，不请求独占音频焦点\n" +
                 "所有数据仅在同一局域网内传输",

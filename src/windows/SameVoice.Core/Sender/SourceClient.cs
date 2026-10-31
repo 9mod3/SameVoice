@@ -38,10 +38,13 @@ public sealed class SourceClient : IAsyncDisposable
     private readonly string _deviceName;
     private readonly string _platform;
     private readonly IAudioCapture _capture;
+    private readonly IAudioCapture24? _capture24;
+    private readonly AudioQuality _preferredQuality;
     private readonly ClockSynchronizer _clock = new();
     private readonly BlockingCollection<byte[]> _sendQueue = new(new ConcurrentQueue<byte[]>(), 96);
     private readonly object _captureGate = new();
     private readonly List<short> _pending = new(4096);
+    private readonly List<byte> _pending24 = new(8192);
     private readonly SemaphoreSlim _controlWriteGate = new(1, 1);
     private readonly object _socketSendGate = new();
 
@@ -72,15 +75,26 @@ public sealed class SourceClient : IAsyncDisposable
     private long _lastRttUs = -1;
     private uint _pingSequence;
     private uint _sequence;
+    private int _bits = 16;
     private bool _sharing;
 
-    public SourceClient(string deviceName, string platform, IAudioCapture capture)
+    public SourceClient(
+        string deviceName,
+        string platform,
+        IAudioCapture capture,
+        AudioQuality preferredQuality = AudioQuality.Standard)
     {
         _deviceName = string.IsNullOrWhiteSpace(deviceName) ? "SameVoice 音源" : deviceName.Trim();
         _platform = platform;
         _capture = capture;
+        _preferredQuality = preferredQuality;
         _capture.DataAvailable += OnCaptureData;
         _capture.Faulted += OnCaptureFaulted;
+        if (capture is IAudioCapture24 high)
+        {
+            _capture24 = high;
+            _capture24.DataAvailable24 += OnCaptureData24;
+        }
     }
 
     public string DeviceName => _deviceName;
@@ -128,7 +142,7 @@ public sealed class SourceClient : IAsyncDisposable
                 NewLine = "\n"
             };
 
-            await SendControlAsync(ControlProtocol.Hello(_deviceName, _platform), token).ConfigureAwait(false);
+            await SendControlAsync(ControlProtocol.Hello(_deviceName, _platform, bits: _preferredQuality.Bits()), token).ConfigureAwait(false);
             string? welcomeLine = await _reader.ReadLineAsync(token).ConfigureAwait(false);
             if (welcomeLine is null) throw new IOException("输出端关闭了连接。");
             WelcomeInfo? welcome = ControlProtocol.ParseWelcome(welcomeLine);
@@ -142,6 +156,9 @@ public sealed class SourceClient : IAsyncDisposable
             _token = welcome.Token;
             _hostMode = welcome.Mode;
             _hostName = welcome.HostName;
+            _bits = welcome.BitsPerSample;
+            if (_capture24 is not null)
+                _capture24.Capture24Bit = _bits == 24;
             _audioEndpoint = new IPEndPoint(offer.Address, welcome.AudioPort);
             _udp = new UdpClient(AddressFamily.InterNetwork);
             _udp.Client.ReceiveBufferSize = 256 * 1024;
@@ -244,6 +261,7 @@ public sealed class SourceClient : IAsyncDisposable
 
     private void OnCaptureData(short[] samples, long captureStartLocalUs)
     {
+        if (_bits != 16) return;
         if (!_sharing || _udp is null || !_clock.IsReady) return;
         try
         {
@@ -295,6 +313,61 @@ public sealed class SourceClient : IAsyncDisposable
 
                 if (_pending.Count > ProtocolConstants.PacketFrames * ProtocolConstants.Channels * 50)
                     _pending.Clear();
+            }
+        }
+        catch (Exception)
+        {
+            // Never let a bad capture callback take down the capture thread.
+        }
+    }
+
+    private void OnCaptureData24(byte[] samples, long captureStartLocalUs)
+    {
+        if (_bits != 24) return;
+        if (!_sharing || _udp is null || !_clock.IsReady) return;
+        int packetBytes = ProtocolConstants.HighPacketFrames * ProtocolConstants.HighBytesPerFrame;
+        try
+        {
+            lock (_captureGate)
+            {
+                if (_nextPacketLocalUs == 0 ||
+                    captureStartLocalUs > _nextPacketLocalUs + 250_000 ||
+                    captureStartLocalUs + 100_000 < _nextPacketLocalUs)
+                {
+                    if (_nextPacketLocalUs != 0) _pending24.Clear();
+                    _nextPacketLocalUs = captureStartLocalUs;
+                }
+
+                _pending24.AddRange(samples);
+                while (_pending24.Count >= packetBytes)
+                {
+                    byte[] payload = new byte[packetBytes];
+                    _pending24.CopyTo(0, payload, 0, packetBytes);
+                    _pending24.RemoveRange(0, packetBytes);
+
+                    long localStart = _nextPacketLocalUs;
+                    _nextPacketLocalUs += ProtocolConstants.HighPacketDurationUs;
+                    long hostCapture = _clock.ToHostTime(localStart);
+                    uint sequence = _sequence++;
+                    byte[] packet = AudioPacket.Encode(
+                        ProtocolConstants.PacketTypeAudio,
+                        _sessionId,
+                        _token,
+                        sequence,
+                        hostCapture,
+                        payload);
+
+                    if (!_sendQueue.TryAdd(packet))
+                        Interlocked.Increment(ref _dropped);
+                    else
+                    {
+                        Interlocked.Increment(ref _packetsSent);
+                        Interlocked.Add(ref _bytesSent, packet.Length);
+                    }
+                }
+
+                if (_pending24.Count > packetBytes * 50)
+                    _pending24.Clear();
             }
         }
         catch (Exception)

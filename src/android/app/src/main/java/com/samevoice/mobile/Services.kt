@@ -158,7 +158,9 @@ class HostService : Service() {
         acquireLocks()
         worker.execute {
             try {
-                val engine = HostEngine(name, mode)
+                val qualityBits = getSharedPreferences("samevoice", MODE_PRIVATE)
+                    .getInt("hostQualityBits", 24)
+                val engine = HostEngine(name, mode, AudioQuality.fromBits(qualityBits))
                 engine.start()
                 engine.setMasterVolume(initialVolume)
                 if (stopping) {

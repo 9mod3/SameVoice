@@ -23,7 +23,8 @@ public sealed record WelcomeInfo(
     int AudioPort,
     string HostName,
     HostMode Mode,
-    int SampleRate);
+    int SampleRate,
+    int BitsPerSample = 16);
 
 public static class DiscoveryProtocol
 {
@@ -102,14 +103,15 @@ public static class DiscoveryProtocol
 
 public static class ControlProtocol
 {
-    public static byte[] Hello(string name, string platform, string pin = "") =>
+    public static byte[] Hello(string name, string platform, string pin = "", int bits = 16) =>
         JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
         {
             ["type"] = "hello",
             ["proto"] = ProtocolConstants.ProtocolVersion,
             ["name"] = name,
             ["platform"] = platform,
-            ["pin"] = pin
+            ["pin"] = pin,
+            ["bits"] = bits
         });
 
     public static byte[] Welcome(
@@ -117,7 +119,8 @@ public static class ControlProtocol
         ulong token,
         int audioPort,
         string hostName,
-        HostMode mode) =>
+        HostMode mode,
+        int bits = 16) =>
         JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
         {
             ["type"] = "welcome",
@@ -127,7 +130,8 @@ public static class ControlProtocol
             ["audioPort"] = audioPort,
             ["name"] = hostName,
             ["mode"] = mode.ToWire(),
-            ["sampleRate"] = ProtocolConstants.SampleRate
+            ["sampleRate"] = ProtocolConstants.SampleRate,
+            ["bits"] = bits
         });
 
     public static byte[] Start() => Simple("start");
@@ -188,7 +192,9 @@ public static class ControlProtocol
             HostMode mode = root.TryGetProperty("mode", out var m) ? HostModeExtensions.FromWire(m.GetString()) : HostMode.Balanced;
             int rate = root.TryGetProperty("sampleRate", out var sr) ? sr.GetInt32() : ProtocolConstants.SampleRate;
             if (rate != ProtocolConstants.SampleRate) return null;
-            return new WelcomeInfo(s.GetUInt32(), token, audioPort, hostName, mode, rate);
+            int bits = root.TryGetProperty("bits", out var b) ? b.GetInt32() : 16;
+            if (bits is not (16 or 24)) return null;
+            return new WelcomeInfo(s.GetUInt32(), token, audioPort, hostName, mode, rate, bits);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
         {

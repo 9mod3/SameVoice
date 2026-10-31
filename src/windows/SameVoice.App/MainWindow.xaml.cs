@@ -41,6 +41,13 @@ public partial class MainWindow : Window
     private bool _dualVolumeUpdating;
     private bool _trayHintShown;
     private int _currentPage;
+    private readonly List<QualityOption> _qualityOptions = new()
+    {
+        new(AudioQuality.Standard, AudioQuality.Standard.DisplayName()),
+        new(AudioQuality.High, AudioQuality.High.DisplayName())
+    };
+
+    private sealed record QualityOption(AudioQuality Value, string Name);
 
     public MainWindow()
     {
@@ -63,6 +70,11 @@ public partial class MainWindow : Window
         if (_settings.Mode == HostMode.LowLatency) LowModeRadio.IsChecked = true;
         else BalancedModeRadio.IsChecked = true;
 
+        QualityCombo.ItemsSource = _qualityOptions;
+        QualityCombo.DisplayMemberPath = nameof(QualityOption.Name);
+        QualityCombo.SelectedValuePath = nameof(QualityOption.Value);
+        QualityCombo.SelectedValue = _settings.PreferredQuality;
+
         Loaded += MainWindow_Loaded;
         SourceInitialized += (_, _) => ApplyWindowAppearance();
     }
@@ -78,7 +90,7 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.2.0 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.3.1 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
@@ -375,7 +387,7 @@ public partial class MainWindow : Window
         try
         {
             capture = CreateCapture();
-            client = new SourceClient(_settings.DeviceName, "windows", capture);
+            client = new SourceClient(_settings.DeviceName, "windows", capture, _settings.PreferredQuality);
             client.StatusChanged += Source_StatusChanged;
             client.Faulted += Source_Faulted;
             await client.ConnectAsync(offer);
@@ -459,6 +471,9 @@ public partial class MainWindow : Window
     private IAudioCapture CreateCapture()
     {
         var capture = new WasapiLoopbackCapture(BuildEdition.DualRoute ? _settings.CaptureDeviceId : null);
+        // DualRoute has no fixed source boost; all make-up gain is user
+        // controlled from 0% to 600% on the send-gain slider.
+        capture.FixedBoost = BuildEdition.DualRoute ? 1f : 4f;
         capture.ExtraGain = BuildEdition.DualRoute
             ? (float)(_settings.DualRouteRemoteGain / 100.0)
             : 1f;
@@ -536,14 +551,22 @@ public partial class MainWindow : Window
     private void DualLocalVolume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_dualVolumeUpdating) return;
-        if (e.NewValue > 0.5)
-            SystemAudioMute.TrySetMuted(false, out _);
+
+        string? deviceId = _settings.LocalOutputDeviceId;
+        bool wasMuted = SystemAudioMute.TryGetMuted(deviceId, out bool muted) && muted;
+        bool keepMuted = _localMuteApplied || wasMuted;
+
         if (SystemAudioMute.TrySetVolumeScalar(
-                _settings.LocalOutputDeviceId, (float)(e.NewValue / 100.0), out string? error))
+                deviceId, (float)(e.NewValue / 100.0), out string? error))
         {
             _settings.DualRouteLocalVolume = e.NewValue;
             _settings.Save();
             DualLocalVolumeText.Text = $"{e.NewValue:0}%";
+
+            // Some drivers unmute on a volume change. Restore the mute state
+            // without touching the "本机静音" button or _localMuteApplied.
+            if (keepMuted && !SystemAudioMute.TrySetMuted(deviceId, true, out string? muteError))
+                _vm.SetMessage("保持本机静音失败：" + (muteError ?? "未知错误"));
         }
         else
         {
@@ -617,6 +640,16 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------------------------- settings
+
+    private void Quality_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready) return;
+        if (QualityCombo.SelectedItem is not QualityOption option) return;
+        _settings.PreferredQuality = option.Value;
+        _settings.Save();
+        if (_source is not null)
+            _vm.SetMessage("传输音质已保存，下次开始共享时生效。");
+    }
 
     private void SaveDeviceName_Click(object sender, RoutedEventArgs e)
     {

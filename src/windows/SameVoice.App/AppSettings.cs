@@ -8,6 +8,7 @@ public sealed class AppSettings
 {
     public string DeviceName { get; set; } = DefaultDeviceName();
     public HostMode Mode { get; set; } = HostMode.Balanced;
+    public AudioQuality PreferredQuality { get; set; } = AudioQuality.High;
     public double MasterVolume { get; set; } = 80;
     public string CaptureDeviceId { get; set; } = "";
     public string CaptureDeviceName { get; set; } = "默认播放设备";
@@ -44,8 +45,10 @@ public sealed class AppSettings
                     if (string.IsNullOrWhiteSpace(settings.DeviceName))
                         settings.DeviceName = DefaultDeviceName();
                     settings.MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100);
+                    if (!Enum.IsDefined(settings.PreferredQuality))
+                        settings.PreferredQuality = AudioQuality.High;
                     settings.DualRouteLocalVolume = Math.Clamp(settings.DualRouteLocalVolume, 0, 100);
-                    settings.DualRouteRemoteGain = Math.Clamp(settings.DualRouteRemoteGain, 0, 200);
+                    settings.DualRouteRemoteGain = Math.Clamp(settings.DualRouteRemoteGain, 0, 600);
                     if (string.IsNullOrWhiteSpace(settings.CaptureDeviceName))
                         settings.CaptureDeviceName = "默认播放设备";
                     if (string.IsNullOrWhiteSpace(settings.LocalOutputDeviceName))

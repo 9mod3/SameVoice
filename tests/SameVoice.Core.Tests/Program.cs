@@ -31,6 +31,8 @@ internal static class Program
         TestClockSync();
         TestMixer();
         TestPcm();
+        TestPcm24();
+        TestQualityHandshake();
         TestResampler();
 
         Console.WriteLine($"{_passed} passed, {_failed} failed");
@@ -177,6 +179,32 @@ internal static class Program
         Equal(480 * 2, converted.Length, "48k pcm converter length");
         Check(Math.Abs(converted[0] - 16384) < 3, "left sample conversion");
         Check(Math.Abs(converted[1] + 16384) < 3, "right sample conversion");
+    }
+
+    private static void TestPcm24()
+    {
+        float[] source = { -0.5f, 0f, 0.5f, 0.999f };
+        byte[] encoded = PcmCodec.EncodePcm24(source);
+        Equal(source.Length * 3, encoded.Length, "pcm24 byte length");
+        float[] decoded = PcmCodec.DecodePcm24ToFloat(encoded);
+        for (int i = 0; i < source.Length; i++)
+            Check(Math.Abs(source[i] - decoded[i]) < 0.00001f, "pcm24 roundtrip");
+
+        Equal(ProtocolConstants.HighPacketFrames * 6,
+            ProtocolConstants.HighPacketBytes, "pcm24 packet size");
+        Check(ProtocolConstants.HighPacketBytes + ProtocolConstants.AudioHeaderSize + 28 <= 1500,
+            "pcm24 packet fits Ethernet MTU");
+    }
+
+    private static void TestQualityHandshake()
+    {
+        byte[] welcomeBytes = ControlProtocol.Welcome(42, 0xABCDEF0123456789, 47999, "电脑",
+            HostMode.Balanced, bits: 24);
+        WelcomeInfo? welcome = ControlProtocol.ParseWelcome(
+            System.Text.Encoding.UTF8.GetString(welcomeBytes));
+        Check(welcome is not null && welcome.BitsPerSample == 24, "welcome 24-bit negotiation");
+        Check(AudioQuality.High.Bits() == 24 && AudioQuality.Standard.Bits() == 16,
+            "quality bits");
     }
 
     private static void TestResampler()

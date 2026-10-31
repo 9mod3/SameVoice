@@ -63,7 +63,8 @@ data class HostSnapshot(
  */
 class HostEngine(
     private val hostName: String,
-    initialMode: HostMode
+    initialMode: HostMode,
+    private val maxQuality: AudioQuality = AudioQuality.HIGH
 ) {
     private val mixer = MixEngine(initialMode)
     private val sessions = ConcurrentHashMap<Int, SourceSession>()
@@ -84,6 +85,7 @@ class HostEngine(
     private var audioSocket: DatagramSocket? = null
     private var discoverySocket: DatagramSocket? = null
     private var audioTrack: AudioTrack? = null
+    private var outputFloat = true
     private val threads = mutableListOf<Thread>()
     private val sendLock = Any()
 
@@ -228,36 +230,68 @@ class HostEngine(
     }
 
     private fun createTrack(): AudioTrack {
+        createFloatTrack()?.let {
+            outputFloat = true
+            return it
+        }
+        outputFloat = false
+        return createPcm16Track()
+    }
+
+    private fun createFloatTrack(): AudioTrack? {
+        val minBuffer = AudioTrack.getMinBufferSize(
+            Protocol.SAMPLE_RATE,
+            AudioFormat.CHANNEL_OUT_STEREO,
+            AudioFormat.ENCODING_PCM_FLOAT
+        )
+        if (minBuffer <= 0) return null
+        return try {
+            buildTrack(
+                AudioFormat.ENCODING_PCM_FLOAT,
+                max(minBuffer, Protocol.PACKET_BYTES * 8)
+            )?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }?.also { it.play() }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun createPcm16Track(): AudioTrack {
         val minBuffer = AudioTrack.getMinBufferSize(
             Protocol.SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_16BIT
         )
         if (minBuffer <= 0) throw IllegalStateException("设备不支持 48 kHz 立体声播放")
-        val bufferBytes = max(minBuffer, Protocol.PACKET_BYTES * 4)
-        val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build()
-        val format = AudioFormat.Builder()
-            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-            .setSampleRate(Protocol.SAMPLE_RATE)
-            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-            .build()
-        // No AudioFocus request is made intentionally. This keeps SameVoice in
-        // the normal shared mix alongside every other app.
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(attributes)
-            .setAudioFormat(format)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(bufferBytes)
-            .build()
+        val track = buildTrack(
+            AudioFormat.ENCODING_PCM_16BIT,
+            max(minBuffer, Protocol.PACKET_BYTES * 4)
+        ) ?: throw IllegalStateException("无法初始化音频播放（AudioTrack）")
         if (track.state != AudioTrack.STATE_INITIALIZED) {
             try { track.release() } catch (_: Exception) {}
             throw IllegalStateException("无法初始化音频播放（AudioTrack）")
         }
         track.play()
         return track
+    }
+
+    private fun buildTrack(encoding: Int, bufferBytes: Int): AudioTrack? {
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val format = AudioFormat.Builder()
+            .setEncoding(encoding)
+            .setSampleRate(Protocol.SAMPLE_RATE)
+            .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+            .build()
+        // No AudioFocus request is made intentionally. This keeps SameVoice in
+        // the normal shared mix alongside every other app.
+        return AudioTrack.Builder()
+            .setAudioAttributes(attributes)
+            .setAudioFormat(format)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .setBufferSizeInBytes(bufferBytes)
+            .build()
     }
 
     private fun startThread(name: String, block: () -> Unit) {
@@ -331,18 +365,23 @@ class HostEngine(
             if (name.length > 60) name = name.take(60)
             var platform = hello.optString("platform", "unknown").lowercase()
             if (platform.length > 20) platform = platform.take(20)
+            val requestedBits = hello.optInt("bits", 16)
+            val bits = min(
+                if (requestedBits == 24) 24 else 16,
+                if (outputFloat) maxQuality.bits else 16
+            )
 
             val id = nextId.incrementAndGet()
             val token = random.nextLong()
             val remote = client.inetAddress?.hostAddress ?: "?"
-            session = SourceSession(id, token, name, platform, remote, client, reader, writer)
+            session = SourceSession(id, token, name, platform, remote, bits, client, reader, writer)
             sessions[id] = session
             byToken[token] = session
             mixer.addSource(id)
             client.soTimeout = 0
 
             session.send(
-                Control.welcome(id, token, audioPort, hostName, mode)
+                Control.welcome(id, token, audioPort, hostName, mode, bits)
             )
 
             while (running) {
@@ -408,16 +447,27 @@ class HostEngine(
                     continue
                 }
                 if (packet.type != Protocol.TYPE_AUDIO) continue
-                if (packet.payload.size != Protocol.PACKET_BYTES) continue
+                val expectedBytes = session.packetFrames * Protocol.CHANNELS * session.bits / 8
+                if (packet.payload.size != expectedBytes) continue
 
                 session.recordPacket(packet.sequence)
                 session.bytes.addAndGet(packet.payload.size.toLong())
                 if (packet.isMuted) continue
 
-                val samples = ShortArray(Protocol.PACKET_FRAMES * Protocol.CHANNELS)
+                val samples = FloatArray(session.packetFrames * Protocol.CHANNELS)
                 val bb = ByteBuffer.wrap(packet.payload).order(ByteOrder.LITTLE_ENDIAN)
-                for (i in samples.indices) samples[i] = bb.short
-                mixer.push(session.id, packet.captureUs, samples, Protocol.PACKET_FRAMES)
+                if (session.bits == 24) {
+                    for (i in samples.indices) {
+                        var value = (bb.get().toInt() and 0xFF) or
+                            ((bb.get().toInt() and 0xFF) shl 8) or
+                            ((bb.get().toInt() and 0xFF) shl 16)
+                        if (value and 0x800000 != 0) value = value or -0x1000000
+                        samples[i] = value / 8_388_608f
+                    }
+                } else {
+                    for (i in samples.indices) samples[i] = bb.short / 32768f
+                }
+                mixer.push(session.id, packet.captureUs, samples, session.packetFrames)
             } catch (_: SocketException) {
                 break
             } catch (_: Exception) {
@@ -431,18 +481,34 @@ class HostEngine(
     private fun outputLoop() {
         val track = audioTrack ?: return
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
-        val buffer = ShortArray(480 * Protocol.CHANNELS)
+        val buffer = FloatArray(480 * Protocol.CHANNELS)
+        val shortBuffer = ShortArray(480 * Protocol.CHANNELS)
         try {
             while (running) {
                 mixer.render(buffer, 480)
-                var offset = 0
-                while (offset < buffer.size) {
-                    val written = track.write(buffer, offset, buffer.size - offset, AudioTrack.WRITE_BLOCKING)
-                    if (written <= 0) {
-                        lastError = "AudioTrack 写入失败：$written"
-                        return
+                if (outputFloat) {
+                    var offset = 0
+                    while (offset < buffer.size) {
+                        val written = track.write(buffer, offset, buffer.size - offset, AudioTrack.WRITE_BLOCKING)
+                        if (written <= 0) {
+                            lastError = "AudioTrack 写入失败：$written"
+                            return
+                        }
+                        offset += written
                     }
-                    offset += written
+                } else {
+                    for (i in buffer.indices) {
+                        shortBuffer[i] = (buffer[i] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort()
+                    }
+                    var offset = 0
+                    while (offset < shortBuffer.size) {
+                        val written = track.write(shortBuffer, offset, shortBuffer.size - offset, AudioTrack.WRITE_BLOCKING)
+                        if (written <= 0) {
+                            lastError = "AudioTrack 写入失败：$written"
+                            return
+                        }
+                        offset += written
+                    }
                 }
             }
         } catch (t: Throwable) {
@@ -466,10 +532,13 @@ class HostEngine(
         @Volatile var name: String,
         val platform: String,
         val address: String,
+        val bits: Int,
         private val client: Socket,
         private val reader: BufferedReader,
         private val writer: BufferedWriter
     ) {
+        val packetFrames: Int = if (bits == 24) Protocol.HIGH_PACKET_FRAMES else Protocol.PACKET_FRAMES
+
         @Volatile var sharing = false
         @Volatile var lastSeenMs = System.currentTimeMillis()
         val packets = AtomicLong()
@@ -516,7 +585,7 @@ class HostEngine(
 private class MixEngine(initialMode: HostMode) {
     private class Chunk(
         val startFrame: Long,
-        val samples: ShortArray,
+        val samples: FloatArray,
         var sampleOffsetFrames: Int,
         var frames: Int
     )
@@ -531,7 +600,7 @@ private class MixEngine(initialMode: HostMode) {
         fun clear() = chunks.clear()
 
         @Synchronized
-        fun push(startFrame: Long, samples: ShortArray, frames: Int) {
+        fun push(startFrame: Long, samples: FloatArray, frames: Int) {
             if (frames <= 0) return
             var actualFrames = frames
             if (samples.size < actualFrames * Protocol.CHANNELS) actualFrames = samples.size / Protocol.CHANNELS
@@ -602,8 +671,8 @@ private class MixEngine(initialMode: HostMode) {
                     val si = (sourceOffset + i) * Protocol.CHANNELS
                     val di = (destOffset + i) * Protocol.CHANNELS
                     if (si + 1 >= chunk.samples.size || di + 1 >= acc.size) break
-                    acc[di] += chunk.samples[si] / 32768f * gain
-                    acc[di + 1] += chunk.samples[si + 1] / 32768f * gain
+                    acc[di] += chunk.samples[si] * gain
+                    acc[di + 1] += chunk.samples[si + 1] * gain
                 }
                 contributed = true
             }
@@ -684,7 +753,7 @@ private class MixEngine(initialMode: HostMode) {
     fun getSourceVolume(id: Int): Float =
         synchronized(sourcesLock) { sources[id]?.volume ?: 0.8f }
 
-    fun push(id: Int, captureHostUs: Long, samples: ShortArray, frames: Int) {
+    fun push(id: Int, captureHostUs: Long, samples: FloatArray, frames: Int) {
         val timeline = synchronized(sourcesLock) { sources[id] } ?: return
         val target: Int
         val start: Long
@@ -713,9 +782,9 @@ private class MixEngine(initialMode: HostMode) {
         timeline.push(startFrame, samples, frames)
     }
 
-    fun render(destination: ShortArray, frames: Int) {
+    fun render(destination: FloatArray, frames: Int) {
         synchronized(renderLock) {
-            java.util.Arrays.fill(destination, 0)
+            java.util.Arrays.fill(destination, 0f)
             if (!running) {
                 peak = 0.0
                 return
@@ -735,8 +804,7 @@ private class MixEngine(initialMode: HostMode) {
             for (i in 0 until needed) {
                 val sample = acc[i] * masterVolume
                 maxPeak = max(maxPeak, abs(sample).toDouble())
-                val limited = softLimit(sample)
-                destination[i] = (limited * 32767f).roundToInt().coerceIn(-32768, 32767).toShort()
+                destination[i] = softLimit(sample)
             }
             peak = maxPeak
             renderedFrames += frames
