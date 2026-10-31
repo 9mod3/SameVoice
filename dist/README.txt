@@ -26,6 +26,11 @@
   - 静音后调节「本机音量」不会解除静音；音量变化完成后自动恢复静音。
   - 恢复声音请点「恢复本机声音」。
 
+免 SmartScreen 启动：
+  - 包内不再包含未签名的 SameVoice.exe。
+  - 用 Start-SameVoice.cmd 启动，内部通过微软签名的 dotnet.exe 加载 SameVoice.dll。
+  - 如果 ZIP 带“来自 Internet”标记，先右键 ZIP → 属性 → 解除锁定，再解压。
+
 音质选择：
   - 标准 48 kHz / 16-bit，或高音质 48 kHz / 24-bit。
   - Windows 音源和 Android 输出端都选高音质时生效；否则自动回退标准。
@@ -80,7 +85,7 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 
 SHA-256:
   027367DD0872FDF51DEFF791B25539CFE0486F67F6A58B5D302699D8409689D0  versions/mute/SameVoice-Windows-Portable.zip
-  2A9D2089FD82B50FB9FB6A757E11AF0BA01110BEC825E9BBBEDF7B522793F904  versions/dualroute/SameVoice-Windows-Portable.zip
+  F29FAD0ABDD4D3108FF2FF91F1296436C1CACB36E10A13D39CBA46D765C91593  versions/dualroute/SameVoice-Windows-Portable.zip
   B56C32D7D5CDBBE77AED95E8F8397A1CED1541866D48DEA3056F318ED2BDDC0A  SameVoice-Android-1.1.2.zip
   9BF820627342D437BF005A46353FBB036534BFB19E1632C08A6DDD937C948337  android/SameVoice-1.1.2.apk
   E61F02371D89AC40697842BC3DC4E1578D6DBA0336D5457C9D5FC5C42843D610  android/SameVoice-1.1.2-debug.apk

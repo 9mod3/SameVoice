@@ -21,3 +21,7 @@
 7. Android 输出端也选择对应音质；每路音量仍可独立调整。
 
 完整说明见 DUAL-ROUTE.md。
+
+首次运行见 README-首次运行.txt：
+- 用 Start-SameVoice.cmd 启动，不要找 SameVoice.exe（已移除）。
+- 通过微软签名的 dotnet.exe 加载 SameVoice.dll，避免未签名 exe 触发 SmartScreen。

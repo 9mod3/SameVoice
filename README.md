@@ -31,7 +31,7 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
-| Windows 1.3.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 静音后调音量保持静音；48k/24-bit 可选 |
+| Windows 1.3.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 静音后调音量保持静音；48k/24-bit 可选；通过微软签名 dotnet.exe 启动 |
 | Android 10+ | `dist/android/SameVoice-1.1.2.apk` | 使用仓库内演示签名，允许侧载 |
 | Android（调试版） | `dist/android/SameVoice-1.1.2-debug.apk` | 调试签名，便于 logcat |
 
