@@ -11,9 +11,6 @@ Write-Host "Creating portable Windows bundle (built-in .NET 8 runtime)..." -Fore
 if (Test-Path $bundle) { Remove-Item $bundle -Recurse -Force }
 New-Item -ItemType Directory -Force $bundle | Out-Null
 Copy-Item "dist/windows/*" $bundle -Recurse -Force
-# Do not ship the unsigned apphost; launch through the Microsoft-signed
-# dotnet host to avoid the "Windows protected your PC" SmartScreen prompt.
-Remove-Item (Join-Path $bundle "SameVoice.exe") -Force -ErrorAction SilentlyContinue
 
 $dotnetRoot = Split-Path (Get-Command dotnet).Source -Parent
 $coreRoot = Join-Path $dotnetRoot "shared/Microsoft.NETCore.App"
@@ -44,16 +41,13 @@ Copy-Item (Join-Path $desktopRoot $version) (Join-Path $runtime "shared/Microsof
 Copy-Item $fxr.FullName (Join-Path $runtime "host/fxr") -Recurse
 Copy-Item (Join-Path $dotnetRoot "LICENSE.txt") (Join-Path $runtime "LICENSE.txt") -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $dotnetRoot "ThirdPartyNotices.txt") (Join-Path $runtime "ThirdPartyNotices.txt") -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $dotnetRoot "dotnet.exe") (Join-Path $runtime "dotnet.exe") -Force
 
 @"
 @echo off
 setlocal
-cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Unblock-File -LiteralPath '%~dp0SameVoice.dll','%~dp0SameVoice.deps.json','%~dp0SameVoice.runtimeconfig.json','%~dp0dotnet-runtime\dotnet.exe' -ErrorAction SilentlyContinue" >nul 2>&1
 set "DOTNET_ROOT=%~dp0dotnet-runtime"
 set "DOTNET_ROOT_X64=%~dp0dotnet-runtime"
-start "" "%~dp0dotnet-runtime\dotnet.exe" "%~dp0SameVoice.dll" %*
+start "" "%~dp0SameVoice.exe" %*
 "@ | Set-Content (Join-Path $bundle "Start-SameVoice.cmd") -Encoding ASCII
 
 Copy-Item (Join-Path $PSScriptRoot "portable-readme.txt") (Join-Path $bundle "README-Portable.txt") -Force

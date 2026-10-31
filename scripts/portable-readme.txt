@@ -2,7 +2,6 @@
 
 双击「Start-SameVoice.cmd」启动。
 这个目录已经内置 .NET 8 桌面运行时（dotnet-runtime），不需要另外安装 .NET，也不需要联网。
-启动器使用微软签名的 dotnet.exe 加载 SameVoice.dll，不再直接运行未签名 exe，避免 SmartScreen 拦截。
 
 首次启动时：
 1. Windows 防火墙可能询问是否允许同声访问网络，请勾选「专用网络」并允许。
