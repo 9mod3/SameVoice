@@ -31,11 +31,11 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
-| Windows 1.4.0 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 手动缓冲 40–1000 ms；静音保持；48k/24-bit 可选 |
-| Android 10+ | `dist/android/SameVoice-1.1.3.apk` | 使用仓库内演示签名，允许侧载 |
-| Android（调试版） | `dist/android/SameVoice-1.1.3-debug.apk` | 调试签名，便于 logcat |
+| Windows 1.4.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 主音量 200%；手动缓冲 40–1000 ms；48k/24-bit |
+| Android 10+ | `dist/android/SameVoice-1.1.4.apk` | 使用仓库内演示签名，允许侧载 |
+| Android（调试版） | `dist/android/SameVoice-1.1.4-debug.apk` | 调试签名，便于 logcat |
 
-两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.3 APK。完整选择说明见
+两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.4 APK。完整选择说明见
 [`dist/README.txt`](dist/README.txt)。
 
 ### 1. 选择版本
@@ -283,4 +283,5 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Windows 1.3.0 / Android 1.1.2：新增标准 48k/16-bit 和高音质 48k/24-bit 传输选项；高音质使用 120 帧/包（2.5 ms）避免 UDP 分片，Android 输出改为浮点混音。
 - Windows 1.3.1：本机静音后调节本机音量不再自动解除静音，调完音量后恢复静音状态。
 - Windows 1.4.0 / Android 1.1.3：输出端新增 40–1000 ms 手动缓冲延迟滑杆；120/240 ms 预设仍保留。
+- Windows 1.4.1 / Android 1.1.4：输出端主音量上限从 100% 提高到 200%；Android「全满」设为 200%。
 - 测试断言：54/54 通过。

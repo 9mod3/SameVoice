@@ -29,7 +29,7 @@ public sealed class MixEngine
     public float MasterVolume
     {
         get => _masterVolume;
-        set => _masterVolume = Math.Clamp(value, 0f, 1f);
+        set => _masterVolume = Math.Clamp(value, 0f, 2f);
     }
 
     public int TargetBufferMs => _targetBufferMs;

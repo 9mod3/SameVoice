@@ -84,7 +84,7 @@ public sealed class WaveOutSink : IAudioOutput
     {
         // The mix engine owns gain, so that per-source and master volume share one
         // consistent control path on every platform.
-        Volume = Math.Clamp(volume, 0f, 1f);
+        Volume = Math.Clamp(volume, 0f, 2f);
     }
 
     private void PlaybackLoop(ManualResetEventSlim ready)

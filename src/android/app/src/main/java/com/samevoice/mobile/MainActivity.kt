@@ -154,7 +154,7 @@ class MainActivity : Activity() {
                 ?: NetUtil.defaultDeviceName()
             selectedMode = HostMode.fromWire(prefs.getString("mode", null))
             hostBufferMs = prefs.getInt("bufferMs", 240).coerceIn(40, 1000)
-            masterVolume = prefs.getFloat("volume", 0.8f).coerceIn(0f, 1f)
+            masterVolume = prefs.getFloat("volume", 0.8f).coerceIn(0f, 2f)
             hostQuality = AudioQuality.fromBits(prefs.getInt("hostQualityBits", 24))
 
             setContentView(buildUi())
@@ -463,7 +463,7 @@ class MainActivity : Activity() {
         val maxButton = pill("全满", Palette.MINT, 0xFF1D2A44.toInt()).apply {
             setPadding(dp(9), dp(5), dp(9), dp(5))
             setOnClickListener {
-                changeVolume(100 - (masterVolume * 100).toInt())
+                changeVolume(200 - (masterVolume * 100).toInt())
                 val host = ServiceHub.host
                 if (host != null) {
                     try {
@@ -1278,7 +1278,7 @@ class MainActivity : Activity() {
     }
 
     private fun changeVolume(delta: Int) {
-        val next = ((masterVolume * 100).toInt() + delta).coerceIn(0, 100)
+        val next = ((masterVolume * 100).toInt() + delta).coerceIn(0, 200)
         masterVolume = next / 100f
         hostVolumeValue.text = "$next%"
         prefs.edit().putFloat("volume", masterVolume).apply()
@@ -1508,7 +1508,7 @@ class MainActivity : Activity() {
         })
         box.addView(divider())
         box.addView(text(
-            "同声 SameVoice 1.1.3\n" +
+            "同声 SameVoice 1.1.4\n" +
                 "音频 48 kHz · 立体声 · PCM 16-bit\n" +
                 "共享音频模式，不请求独占音频焦点\n" +
                 "所有数据仅在同一局域网内传输",

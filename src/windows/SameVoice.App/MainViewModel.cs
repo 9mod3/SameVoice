@@ -228,7 +228,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetMasterVolume(double percent)
     {
-        MasterVolume = Math.Clamp(percent, 0, 100);
+        MasterVolume = Math.Clamp(percent, 0, 200);
     }
 
     private void UpdateSources(IReadOnlyList<HostSourceInfo> infos)

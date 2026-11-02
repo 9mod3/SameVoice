@@ -98,7 +98,7 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.4.0 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.4.1 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
@@ -297,7 +297,7 @@ public partial class MainWindow : Window
 
     private void ChangeVolume(int delta)
     {
-        _settings.MasterVolume = Math.Clamp(_settings.MasterVolume + delta, 0, 100);
+        _settings.MasterVolume = Math.Clamp(_settings.MasterVolume + delta, 0, 200);
         _settings.Save();
         _vm.SetMasterVolume(_settings.MasterVolume);
         _host?.SetMasterVolume((float)(_settings.MasterVolume / 100.0));

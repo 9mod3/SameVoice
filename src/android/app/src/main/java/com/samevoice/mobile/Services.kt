@@ -138,7 +138,7 @@ class HostService : Service() {
         ServiceHub.hostStarting = true
         val name = intent.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() } ?: NetUtil.defaultDeviceName()
         val mode = HostMode.fromWire(intent.getStringExtra(EXTRA_MODE))
-        val initialVolume = intent.getFloatExtra(EXTRA_VOLUME, 0.8f).coerceIn(0f, 1f)
+        val initialVolume = intent.getFloatExtra(EXTRA_VOLUME, 0.8f).coerceIn(0f, 2f)
 
         try {
             startForeground(

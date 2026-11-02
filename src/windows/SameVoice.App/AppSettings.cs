@@ -45,7 +45,7 @@ public sealed class AppSettings
                 {
                     if (string.IsNullOrWhiteSpace(settings.DeviceName))
                         settings.DeviceName = DefaultDeviceName();
-                    settings.MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100);
+                    settings.MasterVolume = Math.Clamp(settings.MasterVolume, 0, 200);
                     settings.BufferMs = Math.Clamp(settings.BufferMs, 40, 1000);
                     if (!Enum.IsDefined(settings.PreferredQuality))
                         settings.PreferredQuality = AudioQuality.High;

@@ -160,7 +160,7 @@ class HostEngine(
     }
 
     fun setMasterVolume(volume: Float) {
-        mixer.masterVolume = volume.coerceIn(0f, 1f)
+        mixer.masterVolume = volume.coerceIn(0f, 2f)
     }
 
     fun setSourceVolume(id: Int, volume: Float) {
