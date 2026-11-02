@@ -120,7 +120,7 @@
                                            TextWrapping="Wrap" FontSize="10.5" Foreground="#68748A" LineHeight="17" />
                             </StackPanel>
                         </Border>
-                        <TextBlock x:Name="EditionText" Text="SameVoice 1.3.1" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
+                        <TextBlock x:Name="EditionText" Text="SameVoice 1.4.0" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -270,6 +270,22 @@
                                         </RadioButton>
                                         <TextBlock Text="切换策略会重建抖动缓冲，约 0.2 秒静音属于正常现象。"
                                                    FontSize="9.5" Foreground="#4F5B70" TextWrapping="Wrap" Margin="2,9,0,0" />
+                                        <Border Background="#0C111D" BorderBrush="#202C40" BorderThickness="1"
+                                                CornerRadius="10" Padding="12,10" Margin="0,10,0,0">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <TextBlock Text="手动缓冲延迟" FontSize="11" Foreground="#A7B3C6" />
+                                                    <TextBlock x:Name="BufferMsText" Text="240 ms" FontSize="11"
+                                                               Foreground="#8DEBCF" HorizontalAlignment="Right" />
+                                                </Grid>
+                                                <Slider x:Name="BufferSlider" Style="{StaticResource VolumeSlider}"
+                                                        Minimum="40" Maximum="1000" TickFrequency="10"
+                                                        IsSnapToTickEnabled="True" Margin="0,4,0,0"
+                                                        ValueChanged="Buffer_Changed" />
+                                                <TextBlock Text="40–1000 ms。越低延迟越小，但 Wi-Fi 抖动时更容易断音。"
+                                                           FontSize="9" Foreground="#566278" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
 

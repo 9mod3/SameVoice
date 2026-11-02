@@ -8,6 +8,7 @@ public sealed class AppSettings
 {
     public string DeviceName { get; set; } = DefaultDeviceName();
     public HostMode Mode { get; set; } = HostMode.Balanced;
+    public int BufferMs { get; set; } = 240;
     public AudioQuality PreferredQuality { get; set; } = AudioQuality.High;
     public double MasterVolume { get; set; } = 80;
     public string CaptureDeviceId { get; set; } = "";
@@ -45,6 +46,7 @@ public sealed class AppSettings
                     if (string.IsNullOrWhiteSpace(settings.DeviceName))
                         settings.DeviceName = DefaultDeviceName();
                     settings.MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100);
+                    settings.BufferMs = Math.Clamp(settings.BufferMs, 40, 1000);
                     if (!Enum.IsDefined(settings.PreferredQuality))
                         settings.PreferredQuality = AudioQuality.High;
                     settings.DualRouteLocalVolume = Math.Clamp(settings.DualRouteLocalVolume, 0, 100);

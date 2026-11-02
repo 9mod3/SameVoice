@@ -56,16 +56,18 @@ public sealed class HostEngine : IDisposable
     private Task? _audioTask;
     private Task? _maintenanceTask;
     private HostMode _mode = HostMode.Balanced;
+    private int _bufferMs = ProtocolConstants.BalancedBufferMs;
     private uint _nextSessionId;
     private bool _running;
     private string? _fatalError;
 
-    public HostEngine(IAudioOutput output, string hostName, HostMode mode = HostMode.Balanced)
+    public HostEngine(IAudioOutput output, string hostName, HostMode mode = HostMode.Balanced, int? bufferMs = null)
     {
         _output = output;
         _hostName = string.IsNullOrWhiteSpace(hostName) ? "SameVoice 输出端" : hostName.Trim();
         _mode = mode;
-        _mix.SetMode(_mode.BufferMs());
+        _bufferMs = Math.Clamp(bufferMs ?? mode.BufferMs(), 40, 1000);
+        _mix.SetMode(_bufferMs);
         _roomId = Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
         _nextSessionId = (uint)RandomNumberGenerator.GetInt32(1000, 1_000_000);
     }
@@ -74,6 +76,7 @@ public sealed class HostEngine : IDisposable
     public string RoomId => _roomId;
     public bool IsRunning => _running;
     public HostMode Mode => _mode;
+    public int BufferMs => _bufferMs;
     public int ControlPort => _tcpListener?.LocalEndpoint is IPEndPoint ep ? ep.Port : 0;
     public int AudioPort => _audioUdp?.Client.LocalEndPoint is IPEndPoint ep ? ep.Port : 0;
     public string? FatalError => _fatalError;
@@ -88,7 +91,7 @@ public sealed class HostEngine : IDisposable
         {
             if (_running) return;
             _cts = new CancellationTokenSource();
-            _mix.SetMode(_mode.BufferMs());
+            _mix.SetMode(_bufferMs);
             _mix.Start();
 
             try
@@ -155,10 +158,21 @@ public sealed class HostEngine : IDisposable
     {
         if (_mode == mode) return;
         _mode = mode;
-        _mix.SetMode(mode.BufferMs());
+        _bufferMs = mode.BufferMs();
+        _mix.SetMode(_bufferMs);
         BroadcastMode(mode);
         SourcesChanged?.Invoke();
         Log?.Invoke($"已切换为{mode.DisplayName()}，缓冲目标 {mode.BufferMs()} ms");
+    }
+
+    public void SetBufferMs(int bufferMs)
+    {
+        int clamped = Math.Clamp(bufferMs, 40, 1000);
+        if (_bufferMs == clamped) return;
+        _bufferMs = clamped;
+        _mix.SetMode(_bufferMs);
+        SourcesChanged?.Invoke();
+        Log?.Invoke($"缓冲目标已手动调整为 {_bufferMs} ms");
     }
 
     public void SetMasterVolume(float volume)

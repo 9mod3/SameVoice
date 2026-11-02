@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private bool _dualVolumeUpdating;
     private bool _trayHintShown;
     private int _currentPage;
+    private bool _bufferUpdating;
     private readonly List<QualityOption> _qualityOptions = new()
     {
         new(AudioQuality.Standard, AudioQuality.Standard.DisplayName()),
@@ -66,9 +67,16 @@ public partial class MainWindow : Window
         _vm.HostAddressText = NetworkUtil.FirstLocalAddressText();
         _vm.SetMasterVolume(_settings.MasterVolume);
 
-        _ready = true;
+        _bufferUpdating = true;
+        BufferSlider.Value = _settings.BufferMs;
+        BufferMsText.Text = $"{_settings.BufferMs} ms";
+        _bufferUpdating = false;
+
+        // Set the preset radio before _ready so it does not overwrite the
+        // user's persisted manual buffer value.
         if (_settings.Mode == HostMode.LowLatency) LowModeRadio.IsChecked = true;
         else BalancedModeRadio.IsChecked = true;
+        _ready = true;
 
         QualityCombo.ItemsSource = _qualityOptions;
         QualityCombo.DisplayMemberPath = nameof(QualityOption.Name);
@@ -90,7 +98,7 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.3.1 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.4.0 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
@@ -183,7 +191,7 @@ public partial class MainWindow : Window
         {
             _settings.Save();
             var sink = new WaveOutSink();
-            candidate = new HostEngine(sink, _settings.DeviceName, SelectedMode());
+            candidate = new HostEngine(sink, _settings.DeviceName, SelectedMode(), _settings.BufferMs);
             candidate.SourcesChanged += Host_SourcesChanged;
             candidate.Log += Host_Log;
             candidate.ErrorOccurred += Host_Error;
@@ -242,12 +250,36 @@ public partial class MainWindow : Window
         if (!_ready) return;
         HostMode mode = SelectedMode();
         _settings.Mode = mode;
+        _settings.BufferMs = mode.BufferMs();
+        SetBufferSlider(mode.BufferMs());
         _settings.Save();
         if (_host is not null)
         {
             _host.SetMode(mode);
             _vm.SetMessage($"播放策略已切换为{mode.DisplayName()}。");
         }
+    }
+
+    private void Buffer_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_ready || _bufferUpdating) return;
+        int ms = (int)Math.Round(e.NewValue);
+        _settings.BufferMs = ms;
+        _settings.Save();
+        BufferMsText.Text = $"{ms} ms";
+        if (_host is not null)
+        {
+            _host.SetBufferMs(ms);
+            _vm.SetMessage($"缓冲延迟已调整为 {ms} ms。");
+        }
+    }
+
+    private void SetBufferSlider(int ms)
+    {
+        _bufferUpdating = true;
+        BufferSlider.Value = Math.Clamp(ms, 40, 1000);
+        BufferMsText.Text = $"{BufferSlider.Value:0} ms";
+        _bufferUpdating = false;
     }
 
     private HostMode SelectedMode() =>

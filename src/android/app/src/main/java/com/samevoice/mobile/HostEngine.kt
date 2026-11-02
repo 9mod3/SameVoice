@@ -64,9 +64,12 @@ data class HostSnapshot(
 class HostEngine(
     private val hostName: String,
     initialMode: HostMode,
-    private val maxQuality: AudioQuality = AudioQuality.HIGH
+    private val maxQuality: AudioQuality = AudioQuality.HIGH,
+    initialBufferMs: Int? = null
 ) {
-    private val mixer = MixEngine(initialMode)
+    private val mixer = MixEngine(initialMode).also {
+        it.setBufferMs(initialBufferMs ?: initialMode.bufferMs)
+    }
     private val sessions = ConcurrentHashMap<Int, SourceSession>()
     private val byToken = ConcurrentHashMap<Long, SourceSession>()
     private val nextId = AtomicInteger(SecureRandom().nextInt(100_000) + 1000)
@@ -150,6 +153,10 @@ class HostEngine(
         for (session in sessions.values) {
             try { session.send(Control.mode(value)) } catch (_: Exception) {}
         }
+    }
+
+    fun setBufferMs(ms: Int) {
+        mixer.setBufferMs(ms)
     }
 
     fun setMasterVolume(volume: Float) {
@@ -719,6 +726,11 @@ private class MixEngine(initialMode: HostMode) {
 
     fun setMode(mode: HostMode) {
         synchronized(renderLock) { targetMs = mode.bufferMs }
+        clearBuffers()
+    }
+
+    fun setBufferMs(ms: Int) {
+        synchronized(renderLock) { targetMs = ms.coerceIn(40, 1000) }
         clearBuffers()
     }
 

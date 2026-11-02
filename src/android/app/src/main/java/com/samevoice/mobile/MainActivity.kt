@@ -49,6 +49,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var deviceName: String
     private var selectedMode = HostMode.BALANCED
+    private var hostBufferMs = 240
     private var masterVolume = 0.8f
     private var hostQuality = AudioQuality.HIGH
     private var hosts: List<HostOffer> = emptyList()
@@ -86,6 +87,8 @@ class MainActivity : Activity() {
     private lateinit var lowOption: LinearLayout
     private lateinit var syncDot: TextView
     private lateinit var lowDot: TextView
+    private lateinit var bufferSeek: SeekBar
+    private lateinit var bufferValue: TextView
     private lateinit var qualityStandardPill: TextView
     private lateinit var qualityHighPill: TextView
 
@@ -150,6 +153,7 @@ class MainActivity : Activity() {
             deviceName = prefs.getString("deviceName", null)?.takeIf { it.isNotBlank() }
                 ?: NetUtil.defaultDeviceName()
             selectedMode = HostMode.fromWire(prefs.getString("mode", null))
+            hostBufferMs = prefs.getInt("bufferMs", 240).coerceIn(40, 1000)
             masterVolume = prefs.getFloat("volume", 0.8f).coerceIn(0f, 1f)
             hostQuality = AudioQuality.fromBits(prefs.getInt("hostQualityBits", 24))
 
@@ -358,6 +362,45 @@ class MainActivity : Activity() {
             margins(top = 9)
         })
         page.addView(modeCard)
+
+        // Manual buffer card
+        val bufferCard = card(padding = 18)
+        bufferCard.margins(top = 14)
+        val bufferHeader = horizontal()
+        bufferHeader.addView(text("手动缓冲延迟", 14f, Palette.TEXT, medium = true))
+        bufferValue = text("$hostBufferMs ms", 11f, Palette.MINT, medium = true).apply {
+            gravity = Gravity.END
+        }
+        bufferHeader.addView(bufferValue, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        bufferCard.addView(bufferHeader)
+        bufferCard.addView(text(
+            "40–1000 ms。越低延迟越小，但 Wi-Fi 抖动时更容易断音；调整后会清空缓冲，短暂静音。",
+            10f, Palette.MUTED
+        ).apply {
+            margins(top = 6)
+            setLineSpacing(0f, 1.3f)
+        })
+        bufferSeek = SeekBar(this).apply {
+            min = 40
+            max = 1000
+            progress = hostBufferMs
+            progressTintList = android.content.res.ColorStateList.valueOf(Palette.MINT)
+            thumbTintList = android.content.res.ColorStateList.valueOf(Palette.MINT)
+            margins(top = 10)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    hostBufferMs = progress
+                    bufferValue.text = "$progress ms"
+                    prefs.edit().putInt("bufferMs", progress).apply()
+                    try { ServiceHub.host?.setBufferMs(progress) } catch (_: Exception) {}
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        bufferCard.addView(bufferSeek)
+        page.addView(bufferCard)
 
         // Quality card
         val qualityCard = card(padding = 18)
@@ -728,7 +771,12 @@ class MainActivity : Activity() {
 
     private fun selectMode(mode: HostMode) {
         selectedMode = mode
-        prefs.edit().putString("mode", mode.wire).apply()
+        hostBufferMs = mode.bufferMs
+        prefs.edit().putString("mode", mode.wire).putInt("bufferMs", hostBufferMs).apply()
+        if (::bufferSeek.isInitialized) {
+            bufferSeek.progress = hostBufferMs
+            bufferValue.text = "$hostBufferMs ms"
+        }
         updateModeSelection()
         if (ServiceHub.hostRunning) {
             try {
@@ -1460,7 +1508,7 @@ class MainActivity : Activity() {
         })
         box.addView(divider())
         box.addView(text(
-            "同声 SameVoice 1.1.2\n" +
+            "同声 SameVoice 1.1.3\n" +
                 "音频 48 kHz · 立体声 · PCM 16-bit\n" +
                 "共享音频模式，不请求独占音频焦点\n" +
                 "所有数据仅在同一局域网内传输",
