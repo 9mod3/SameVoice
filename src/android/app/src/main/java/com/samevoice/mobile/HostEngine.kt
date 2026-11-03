@@ -252,10 +252,14 @@ class HostEngine(
             AudioFormat.ENCODING_PCM_FLOAT
         )
         if (minBuffer <= 0) return null
+        // A 20 ms AudioTrack buffer underruns easily when another app is
+        // already active and the audio server is busier. 100 ms gives the
+        // output thread scheduling headroom without dominating total latency.
+        val targetBytes = Protocol.SAMPLE_RATE * Protocol.CHANNELS * 4 * 100 / 1000
         return try {
             buildTrack(
                 AudioFormat.ENCODING_PCM_FLOAT,
-                max(minBuffer, Protocol.PACKET_BYTES * 8)
+                max(minBuffer, targetBytes)
             )?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }?.also { it.play() }
         } catch (_: Throwable) {
             null
@@ -269,9 +273,10 @@ class HostEngine(
             AudioFormat.ENCODING_PCM_16BIT
         )
         if (minBuffer <= 0) throw IllegalStateException("设备不支持 48 kHz 立体声播放")
+        val targetBytes = Protocol.SAMPLE_RATE * Protocol.CHANNELS * 2 * 100 / 1000
         val track = buildTrack(
             AudioFormat.ENCODING_PCM_16BIT,
-            max(minBuffer, Protocol.PACKET_BYTES * 4)
+            max(minBuffer, targetBytes)
         ) ?: throw IllegalStateException("无法初始化音频播放（AudioTrack）")
         if (track.state != AudioTrack.STATE_INITIALIZED) {
             try { track.release() } catch (_: Exception) {}
@@ -298,6 +303,7 @@ class HostEngine(
             .setAudioFormat(format)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .setBufferSizeInBytes(bufferBytes)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_NONE)
             .build()
     }
 
@@ -487,7 +493,11 @@ class HostEngine(
 
     private fun outputLoop() {
         val track = audioTrack ?: return
-        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+        try {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+        } catch (_: Throwable) {
+            try { Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO) } catch (_: Throwable) {}
+        }
         val buffer = FloatArray(480 * Protocol.CHANNELS)
         val shortBuffer = ShortArray(480 * Protocol.CHANNELS)
         try {
