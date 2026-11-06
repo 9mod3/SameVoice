@@ -104,7 +104,10 @@ class HostEngine(
             audioSocket = bindAudio()
             discoverySocket = bindDiscovery()
             audioTrack = createTrack()
-            mixer.start()
+            val trackFrames = audioTrack?.bufferSizeInFrames ?: 0
+            val latencyUs = if (trackFrames > 0)
+                trackFrames * 1_000_000L / Protocol.SAMPLE_RATE else 0L
+            mixer.start(latencyUs)
             running = true
 
             startThread("sv-host-control") { acceptLoop() }
@@ -712,9 +715,14 @@ private class MixEngine(initialMode: HostMode) {
     @Volatile var peak = 0.0
         private set
 
-    fun start() {
+    fun start(outputLatencyUs: Long = 0) {
         synchronized(renderLock) {
-            startUs = Protocol.nowUs()
+            // AudioTrack's write cursor is ahead of the actually audible
+            // sample by its buffer. Anchor the mix timeline to the playback
+            // cursor, not the write cursor, otherwise the displayed network
+            // buffer is short by the AudioTrack buffer (and worse when another
+            // app changes the output route/buffer).
+            startUs = Protocol.nowUs() - outputLatencyUs
             renderedFrames = 0
             running = true
         }

@@ -32,10 +32,10 @@
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
 | Windows 1.4.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 主音量 200%；手动缓冲 40–1000 ms；48k/24-bit |
-| Android 10+ | `dist/android/SameVoice-1.1.6.apk` | 使用仓库内演示签名，允许侧载 |
-| Android（调试版） | `dist/android/SameVoice-1.1.6-debug.apk` | 调试签名，便于 logcat |
+| Android 10+ | `dist/android/SameVoice-1.1.7.apk` | 使用仓库内演示签名，允许侧载 |
+| Android（调试版） | `dist/android/SameVoice-1.1.7-debug.apk` | 调试签名，便于 logcat |
 
-两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.6 APK。完整选择说明见
+两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.7 APK。完整选择说明见
 [`dist/README.txt`](dist/README.txt)。
 
 ### 1. 选择版本
@@ -286,4 +286,5 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Windows 1.4.1 / Android 1.1.4：输出端主音量上限从 100% 提高到 200%；Android「全满」设为 200%。
 - Android 1.1.5：AudioTrack 缓冲提高到约 100 ms，输出线程使用 urgent audio 优先级。
 - Android 1.1.6：增加缓冲漂移微调，按 ±1/±2 帧滑动时间线游标，避免缓冲越来越小导致周期性卡顿；AudioTrack 缓冲保持原大小。
+- Android 1.1.7：把混音时间轴锚定到 AudioTrack 实际播放位置，修复显示缓冲比设定值少一个输出缓冲的问题。
 - 测试断言：54/54 通过。
