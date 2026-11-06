@@ -1,7 +1,7 @@
 同声 SameVoice（双路由 1.4.1 / 本机静音 1.2.0）
 ================================================
 
-这次提供两个 Windows 版，Android 输出端共用 1.1.4。
+这次提供两个 Windows 版，Android 输出端共用 1.1.6。
 
 一、本机静音版（Mute）
 --------------------------------
@@ -32,6 +32,11 @@
   - 保留 120 ms / 240 ms 预设；拖动滑杆后按手动值生效。
   - 调低延迟更跟手，但 Wi-Fi 抖动时更容易断音；调整时会短暂静音。
 
+Android 输出稳定性：
+  - AudioTrack 保持约 20 ms 缓冲；1.1.5 的 100 ms 尝试已回退。
+  - 1.1.6 增加缓冲漂移微调：缓冲偏低/偏高时按 ±1/±2 帧滑动时间线游标。
+  - 解决音频 DAC 与音源采集时钟微小差异导致缓冲越来越小、周期性卡顿。
+
 本机静音：
   - 静音后调节「本机音量」不会解除静音；音量变化完成后自动恢复静音。
   - 恢复声音请点「恢复本机声音」。
@@ -57,23 +62,20 @@
     Scream/VB-CABLE，然后把 Windows 应用路由到 Voicemeeter Input。
   - 完整步骤见包内 DUAL-ROUTE.md 或 docs/DUAL-ROUTE.md。
 
-三、Android 1.1.4
+三、Android 1.1.6
 --------------------------------
-  android/SameVoice-1.1.4.apk（release，推荐）
-  android/SameVoice-1.1.4-debug.apk
-  SameVoice-Android-1.1.4.zip
+  android/SameVoice-1.1.6.apk（release，推荐）
+  android/SameVoice-1.1.6-debug.apk
+  SameVoice-Android-1.1.6.zip
 
 新增：
-  - 主音量上限改为 200%；「全满」设为 200%。
-  - 输出端新增 40–1000 ms 手动缓冲延迟滑杆。
-  - 输出端传输音质选择：标准 16-bit / 高音质 24-bit。
-  - AudioTrack 使用浮点输出，支持 24-bit 混音。
-  - 保留每路音源独立音量和「全满」。
-  - 保留 Scream 直接接收模式。
+  - 缓冲漂移微调，解决网络缓冲持续变小导致的周期性卡顿。
+  - 保持原 AudioTrack 缓冲和线程优先级，不引入额外延迟。
+  - 主音量上限 200%；「全满」设为 200%。
 
 两个 Windows 包内都已附带：
-  Android/SameVoice-1.1.1.apk
-  Android/SameVoice-1.1.1-debug.apk
+  Android/SameVoice-1.1.6.apk
+  Android/SameVoice-1.1.6-debug.apk
 
 四、Scream 说明
 --------------------------------
@@ -92,7 +94,7 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 
 SHA-256:
   027367DD0872FDF51DEFF791B25539CFE0486F67F6A58B5D302699D8409689D0  versions/mute/SameVoice-Windows-Portable.zip
-  B31930E9D4722EB54876688DE662775E58D6E4FA48C7FE1032FE12035491AA38  versions/dualroute/SameVoice-Windows-Portable.zip
-  1B92F84DCF292BF09332FED3E7E065CE947410BB08F94EDB46880E0B7A2231DC  SameVoice-Android-1.1.4.zip
-  F0ACB02C56BC8649DCB4F45DE5CEEE19B8F37B45068B386F18AD13A1109522DA  android/SameVoice-1.1.4.apk
-  3DEF2D18B429EE5D0E0D42D30802D304D7CD4847203C1E0DA04CB035D84A4293  android/SameVoice-1.1.4-debug.apk
+  1526DBE239B387CF4DDE7BFAF24E345AEDFB113A0EFC1DC6729505DAA17423C2  versions/dualroute/SameVoice-Windows-Portable.zip
+  9007CF3FE86E16B2ABF42067E0BE45A6C874A334B3191A4B30B4BD6C502B22E0  SameVoice-Android-1.1.6.zip
+  DD458ADB84FB180A572A23EA14EB9040EFEF4491725D9793DB79D3D38F1F1197  android/SameVoice-1.1.6.apk
+  8EF9BD12333851675341C4BED8C90454F2A907D12F67D6CE28503348EF859063  android/SameVoice-1.1.6-debug.apk

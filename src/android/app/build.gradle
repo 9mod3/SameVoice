@@ -9,8 +9,8 @@ android {
         applicationId 'com.samevoice.mobile'
         minSdk 29
         targetSdk 34
-        versionCode 10
-        versionName '1.1.4'
+        versionCode 12
+        versionName '1.1.6'
     }
 
     signingConfigs {

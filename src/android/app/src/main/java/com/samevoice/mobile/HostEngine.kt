@@ -806,8 +806,28 @@ private class MixEngine(initialMode: HostMode) {
             acc.fill(0f, 0, needed)
 
             val timelines = synchronized(sourcesLock) { sources.values.toList() }
-            val active = timelines.count { it.hasDataAfter(renderedFrames) }
+            val activeTimelines = timelines.filter { it.hasDataAfter(renderedFrames) }
+            val active = activeTimelines.size
             val normalization = if (active > 1) 1f / active else 1f
+
+            // Clock drift between the phone audio DAC and the source device's
+            // capture clock slowly drains or grows the jitter buffer. Nudge
+            // the timeline cursor by a fraction of a frame per block instead
+            // of letting the buffer collapse into periodic underruns.
+            var advanceFrames = frames
+            if (active > 0) {
+                val aheadMs = activeTimelines.minOf { it.bufferAheadMs(renderedFrames) }
+                val errorMs = aheadMs - targetMs
+                advanceFrames += when {
+                    errorMs < -80 -> -2
+                    errorMs < -20 -> -1
+                    errorMs > 100 -> 2
+                    errorMs > 40 -> 1
+                    else -> 0
+                }
+            }
+            advanceFrames = advanceFrames.coerceAtLeast(1)
+
             for (timeline in timelines) {
                 timeline.mixInto(acc, renderedFrames, frames, timeline.volume * normalization)
             }
@@ -819,7 +839,7 @@ private class MixEngine(initialMode: HostMode) {
                 destination[i] = softLimit(sample)
             }
             peak = maxPeak
-            renderedFrames += frames
+            renderedFrames += advanceFrames
         }
     }
 
