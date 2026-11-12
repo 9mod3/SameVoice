@@ -11,7 +11,7 @@
     <RootNamespace>SameVoice.App</RootNamespace>
     <ApplicationIcon>Assets\SameVoice.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.4.2</Version>
+    <Version>1.4.1</Version>
     <Authors>SameVoice</Authors>
     <Product>SameVoice</Product>
     <Description>LAN audio mixer for Windows and Android</Description>
@@ -27,7 +27,6 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
 </Project>
-
 
 
 
