@@ -120,7 +120,7 @@
                                            TextWrapping="Wrap" FontSize="10.5" Foreground="#68748A" LineHeight="17" />
                             </StackPanel>
                         </Border>
-                        <TextBlock x:Name="EditionText" Text="SameVoice 1.4.1" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
+                        <TextBlock x:Name="EditionText" Text="SameVoice 1.4.3" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>

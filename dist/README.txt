@@ -1,4 +1,4 @@
-同声 SameVoice（双路由 1.4.1 / 本机静音 1.2.0）
+同声 SameVoice（双路由 1.4.3 / 本机静音 1.2.0）
 ================================================
 
 这次提供两个 Windows 版，Android 输出端共用 1.1.7。
@@ -17,10 +17,16 @@
   - Android 端「全满」按钮可把主音量和每路音源都设到 100%。
   - 不做自动音量补偿，不包含双路由采集设备选择。
 
-二、双路由版（DualRoute 1.4.1）
+二、双路由版（DualRoute 1.4.3）
 --------------------------------
 文件：
   versions/dualroute/SameVoice-Windows-Portable.zip
+
+Windows 本机静音：
+  - 优先调用 Voicemeeter Remote API 静音 A1 Bus（Bus[0].Mute）。
+  - B1 采集和 Android 输出不受影响。
+  - 找不到 Remote API 时回退 Windows 端点静音，并要求采集为 B1 虚拟设备。
+  - 「本机输出」只列 A1 物理设备。
 
 主音量：
   - 输出端主音量范围改为 0–200%。
@@ -94,7 +100,7 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 
 SHA-256:
   027367DD0872FDF51DEFF791B25539CFE0486F67F6A58B5D302699D8409689D0  versions/mute/SameVoice-Windows-Portable.zip
-  0EC5E06B05B15CC8FC87166E0D2D09189AFBADFDDA441B6777ACB7DACECF4B8B  versions/dualroute/SameVoice-Windows-Portable.zip
+  B5E01E108058DA1C053DF8C22ABB1038D58979FA82834F388532EA65A4489786  versions/dualroute/SameVoice-Windows-Portable.zip
   9E4A26D9726FAC3F47D04149B0DAAC877D8AFE22905CA168855AAADA61F718C7  SameVoice-Android-1.1.7.zip
   29A02F727415FD755D4EF7677D8CDD9A5C80232CDB0F8889B1C546DD59E3B2A5  android/SameVoice-1.1.7.apk
   3E7B5508A9007254D0C4F1EB938D02B47838CD6BF607B1FD657E3461C80ABEA7  android/SameVoice-1.1.7-debug.apk
