@@ -99,7 +99,7 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.4.3 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.4.4 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
@@ -528,28 +528,17 @@ public partial class MainWindow : Window
         _settings.CaptureDeviceId = selected.Id;
         _settings.CaptureDeviceName = selected.Name;
 
-        var localList = endpoints
-            .Where(e => !e.IsDefault && !e.LooksVirtual)
-            .ToList();
-        if (localList.Count == 0)
-            localList = endpoints.Where(e => !e.IsDefault).ToList();
-        LocalOutputCombo.ItemsSource = localList;
+        LocalOutputCombo.ItemsSource = endpoints;
         LocalOutputCombo.DisplayMemberPath = nameof(AudioEndpointInfo.Name);
         LocalOutputCombo.SelectedValuePath = nameof(AudioEndpointInfo.Id);
-        var local = localList.FirstOrDefault(e => e.Id == _settings.LocalOutputDeviceId)
-            ?? localList.FirstOrDefault()
+        var local = endpoints.FirstOrDefault(e => e.Id == _settings.LocalOutputDeviceId)
+            ?? endpoints.FirstOrDefault(e => !e.IsDefault && !e.LooksVirtual)
             ?? endpoints[0];
         LocalOutputCombo.SelectedItem = local;
         _settings.LocalOutputDeviceId = local.Id;
         _settings.LocalOutputDeviceName = local.Name;
         _settings.Save();
     }
-
-    private bool CaptureLooksVirtual() =>
-        _settings.CaptureDeviceName.Contains("Scream", StringComparison.OrdinalIgnoreCase) ||
-        _settings.CaptureDeviceName.Contains("Voicemeeter", StringComparison.OrdinalIgnoreCase) ||
-        _settings.CaptureDeviceName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) ||
-        _settings.CaptureDeviceName.Contains("Virtual", StringComparison.OrdinalIgnoreCase);
 
     private void RefreshCaptureDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -595,11 +584,6 @@ public partial class MainWindow : Window
     private void DualLocalVolume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_dualVolumeUpdating) return;
-        if (BuildEdition.DualRoute && string.IsNullOrWhiteSpace(_settings.LocalOutputDeviceId))
-        {
-            _vm.SetMessage("请先在本机输出中选择 A1 物理设备。");
-            return;
-        }
 
         string? deviceId = _settings.LocalOutputDeviceId;
         bool wasMuted = SystemAudioMute.TryGetMuted(deviceId, out bool muted) && muted;
@@ -671,21 +655,6 @@ public partial class MainWindow : Window
             LocalMuteButton.Content = "恢复本机声音";
             _vm.SetMessage("已静音 Voicemeeter A1；B1 采集和 Android 输出继续工作。");
             return;
-        }
-
-        if (BuildEdition.DualRoute)
-        {
-            if (!CaptureLooksVirtual())
-            {
-                _vm.SetMessage("本机静音已取消：请先把采集设备设为 B1 虚拟设备（Scream/Voicemeeter/CABLE）。");
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(deviceId) ||
-                string.Equals(deviceId, _settings.CaptureDeviceId, StringComparison.OrdinalIgnoreCase))
-            {
-                _vm.SetMessage("本机静音已取消：本机输出必须是独立的 A1 物理设备，不能与采集设备相同。");
-                return;
-            }
         }
 
         if (!SystemAudioMute.TryGetMuted(deviceId, out bool wasMuted))
