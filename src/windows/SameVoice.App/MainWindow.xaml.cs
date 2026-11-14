@@ -38,6 +38,8 @@ public partial class MainWindow : Window
     private bool _localMuteApplied;
     private bool _localMuteWasMuted;
     private bool _localMuteViaVoicemeeter;
+    private bool _localMuteViaVolume;
+    private float _localMuteVolume;
     private string? _localMuteDeviceId;
     private bool _dualVolumeUpdating;
     private bool _trayHintShown;
@@ -99,7 +101,7 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.4.4 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.4.5 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
@@ -664,13 +666,35 @@ public partial class MainWindow : Window
         }
         if (!SystemAudioMute.TrySetMuted(deviceId, true, out string? error))
         {
-            _vm.SetMessage("本机静音失败：" + (error ?? "未知错误"));
+            // HDMI/monitor endpoints such as NVIDIA Mi Monitor can reject
+            // SetMute with E_HANDLE even though their volume control works.
+            // Fall back to volume 0 and remember the old level for restore.
+            if (!SystemAudioMute.TryGetVolumeScalar(deviceId, out float volume))
+            {
+                _vm.SetMessage("本机静音失败：" + (error ?? "无法读取音量"));
+                return;
+            }
+            if (!SystemAudioMute.TrySetVolumeScalar(deviceId, 0f, out string? volumeError))
+            {
+                _vm.SetMessage("本机静音失败：" + (volumeError ?? error ?? "无法调节音量"));
+                return;
+            }
+
+            _localMuteWasMuted = wasMuted;
+            _localMuteVolume = volume;
+            _localMuteDeviceId = deviceId;
+            _localMuteViaVoicemeeter = false;
+            _localMuteViaVolume = true;
+            _localMuteApplied = true;
+            LocalMuteButton.Content = "恢复本机声音";
+            _vm.SetMessage("该端点不支持静音，已用 0 音量静音；采集和输出端继续工作。");
             return;
         }
 
         _localMuteWasMuted = wasMuted;
         _localMuteDeviceId = deviceId;
         _localMuteViaVoicemeeter = false;
+        _localMuteViaVolume = false;
         _localMuteApplied = true;
         LocalMuteButton.Content = "恢复本机声音";
         _vm.SetMessage("本机已静音；采集和输出端继续工作。");
@@ -681,10 +705,13 @@ public partial class MainWindow : Window
         if (!_localMuteApplied) return;
         if (_localMuteViaVoicemeeter)
             VoicemeeterRemote.TrySetA1Mute(_localMuteWasMuted);
+        else if (_localMuteViaVolume)
+            SystemAudioMute.TrySetVolumeScalar(_localMuteDeviceId, _localMuteVolume, out _);
         else
             SystemAudioMute.TrySetMuted(_localMuteDeviceId, _localMuteWasMuted, out _);
         _localMuteApplied = false;
         _localMuteViaVoicemeeter = false;
+        _localMuteViaVolume = false;
         _localMuteDeviceId = null;
         if (LocalMuteButton is not null)
             LocalMuteButton.Content = "本机静音";
