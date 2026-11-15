@@ -35,8 +35,8 @@
 | Android 10+ | `dist/android/SameVoice-1.1.10.apk` | 使用仓库内演示签名，允许侧载 |
 | Android（调试版） | `dist/android/SameVoice-1.1.10-debug.apk` | 调试签名，便于 logcat |
 
-两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.7 APK；`dist/android`
-另提供修复了输出端缓冲和时钟微调杂音的 1.1.10。完整选择说明见
+两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.10 APK；`dist/android`
+也提供同一版本。完整选择说明见
 [`dist/README.txt`](dist/README.txt)。
 
 ### 1. 选择版本
