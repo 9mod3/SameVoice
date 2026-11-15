@@ -690,6 +690,74 @@ private class MixEngine(initialMode: HostMode) {
         }
 
         @Synchronized
+        fun mixIntoInterpolated(
+            acc: FloatArray,
+            blockStart: Double,
+            blockFrames: Int,
+            gain: Float
+        ): Boolean {
+            if (chunks.isEmpty() || blockFrames <= 0) return false
+            val firstFrame = blockStart.toLong()
+            var remove = 0
+            while (remove < chunks.size &&
+                chunks[remove].startFrame + chunks[remove].frames <= firstFrame
+            ) {
+                remove++
+            }
+            if (remove > 0) chunks.subList(0, remove).clear()
+            if (chunks.isEmpty()) return false
+
+            var chunkIndex = 0
+            var contributed = false
+            for (i in 0 until blockFrames) {
+                val position = blockStart + i
+                val frame = position.toLong()
+                val fraction = (position - frame).toFloat()
+                while (chunkIndex < chunks.size &&
+                    chunks[chunkIndex].startFrame + chunks[chunkIndex].frames <= frame
+                ) {
+                    chunkIndex++
+                }
+                if (chunkIndex >= chunks.size) break
+                val chunk = chunks[chunkIndex]
+                if (frame < chunk.startFrame) continue
+
+                val local = (frame - chunk.startFrame).toInt()
+                if (local < 0 || local >= chunk.frames) continue
+                val sampleIndex = (chunk.sampleOffsetFrames + local) * Protocol.CHANNELS
+                if (sampleIndex + 1 >= chunk.samples.size) continue
+
+                var nextLeft = chunk.samples[sampleIndex]
+                var nextRight = chunk.samples[sampleIndex + 1]
+                if (local + 1 < chunk.frames &&
+                    sampleIndex + 3 < chunk.samples.size
+                ) {
+                    nextLeft = chunk.samples[sampleIndex + 2]
+                    nextRight = chunk.samples[sampleIndex + 3]
+                } else if (chunkIndex + 1 < chunks.size) {
+                    // Interpolate across a contiguous packet boundary instead
+                    // of holding the last sample, which would add a tiny click.
+                    val next = chunks[chunkIndex + 1]
+                    if (next.startFrame == chunk.startFrame + chunk.frames &&
+                        next.samples.size >= next.sampleOffsetFrames * Protocol.CHANNELS + 2
+                    ) {
+                        val nextBase = next.sampleOffsetFrames * Protocol.CHANNELS
+                        nextLeft = next.samples[nextBase]
+                        nextRight = next.samples[nextBase + 1]
+                    }
+                }
+
+                val left = chunk.samples[sampleIndex] * (1f - fraction) + nextLeft * fraction
+                val right = chunk.samples[sampleIndex + 1] * (1f - fraction) + nextRight * fraction
+                val dest = i * Protocol.CHANNELS
+                acc[dest] += left * gain
+                acc[dest + 1] += right * gain
+                contributed = true
+            }
+            return contributed
+        }
+
+        @Synchronized
         fun bufferAheadMs(blockStart: Long): Double {
             if (chunks.isEmpty()) return 0.0
             val newestEnd = chunks.last().startFrame + chunks.last().frames
@@ -707,6 +775,7 @@ private class MixEngine(initialMode: HostMode) {
     private var acc = FloatArray(Protocol.SAMPLE_RATE * 2)
     private var startUs = 0L
     private var renderedFrames = 0L
+    private var playheadFrames = 0.0
     private var targetMs = initialMode.bufferMs
     private var running = false
 
@@ -718,7 +787,6 @@ private class MixEngine(initialMode: HostMode) {
     // the carry keeps the sub-frame remainder so the average rate is exact.
     private var trim = 0.0
     private var smoothErrorMs = 0.0
-    private var rateCarry = 0.0
     @Volatile private var writtenProgressUs = 0L
     private var emptySinceUs = 0L
     private var lastResyncUs = 0L
@@ -736,9 +804,9 @@ private class MixEngine(initialMode: HostMode) {
             // app changes the output route/buffer).
             startUs = Protocol.nowUs() - outputLatencyUs
             renderedFrames = 0
+            playheadFrames = 0.0
             trim = 0.0
             smoothErrorMs = 0.0
-            rateCarry = 0.0
             emptySinceUs = 0L
             lastResyncUs = 0L
             writtenProgressUs = Protocol.nowUs()
@@ -864,13 +932,12 @@ private class MixEngine(initialMode: HostMode) {
             smoothErrorMs += (errorMs - smoothErrorMs) * 0.08
             val wanted = (smoothErrorMs * 0.0004).coerceIn(-0.03, 0.03)
             trim += (wanted - trim) * 0.05
-            rateCarry += (1.0 + trim) * frames
-            var advanceFrames = rateCarry.toLong()
-            rateCarry -= advanceFrames.toDouble()
-            if (advanceFrames < 1) advanceFrames = 1
 
+            val blockStart = playheadFrames
             for (timeline in timelines) {
-                timeline.mixInto(acc, renderedFrames, frames, timeline.volume * normalization)
+                timeline.mixIntoInterpolated(
+                    acc, blockStart, frames, timeline.volume * normalization
+                )
             }
 
             var maxPeak = 0.0
@@ -880,7 +947,13 @@ private class MixEngine(initialMode: HostMode) {
                 destination[i] = softLimit(sample)
             }
             peak = maxPeak
-            renderedFrames += advanceFrames
+
+            // Move the source read cursor by a fractional amount. Mixing at
+            // that fractional position (linear interpolation) avoids the
+            // periodic duplicated/dropped frame that the integer cursor
+            // produced as a click/buzz during clock trim.
+            playheadFrames += frames * (1.0 + trim)
+            renderedFrames = playheadFrames.toLong()
             writtenProgressUs = Protocol.nowUs()
         }
     }

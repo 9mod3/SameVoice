@@ -39,7 +39,7 @@ AudioTrack 重采样链路都可能超出这个范围——所以现象只在「
 （仿真中 +1% 的速率差在 4 分钟内把 240 ms 缓冲推到 1.2 s），而重锚只在游标落后
 时触发，因此不会被回收——这是 1.1.7「输出端延迟越来越大」的另一面。
 
-## 1.1.9 的修复
+## 1.1.9 / 1.1.10 的修复
 
 `src/android/app/src/main/java/com/samevoice/mobile/HostEngine.kt` 的 `MixEngine`：
 
@@ -53,13 +53,15 @@ AudioTrack 重采样链路都可能超出这个范围——所以现象只在「
     这样输出线程卡死或时钟差大到 3% 以上时能自动回到目标延迟，而不是永久静音。
 - 目标缓冲、主音量、每路音量的对外行为不变；UI 显示的 `xxx ms 缓冲` 仍然是
   真实的抖动缓冲（内容帧数）。
+- 1.1.10 把分数速率微调改为**连续线性插值**读取时间线：不再通过整数丢帧/重复帧改变游标，
+  因此 1.1.9 在速率差约 0.1% 以上时可听到的周期性“咔哒/沙沙”声消失；缓冲调节与自动重锚逻辑不变。
 
 ## 验证
 
 `tools/timeline-sim/sim.py` 把 `MixEngine` / `SourceTimeline` 和 Windows 端的
 时间戳逻辑 1:1 移植成 Python 仿真，可复现上面的结论（240 s，目标 240 ms）：
 
-| 源端速率差 | 1.1.7 结果 | 1.1.9 结果 |
+| 源端速率差 | 1.1.7 结果 | 1.1.10 结果 |
 | --- | --- | --- |
 | 0% | 249.8 ms | 235 ms |
 | −0.1% | 245.8 ms | 235 ms |
@@ -80,7 +82,7 @@ python tools/timeline-sim/sim.py --compare --seconds 240
 ## 还需要注意
 
 - 本次只改了 Android 端。已用仓库内的 `.toolchain/`（JDK 17 + Android SDK）构建出
-  `dist/android/SameVoice-1.1.9.apk`（versionCode 15，演示签名），可直接侧载；
+  `dist/android/SameVoice-1.1.10.apk`（versionCode 16，演示签名），可直接侧载；
   重新构建见 README 的「从源码构建 → Android」一节。
 - Windows 端 `ClockSynchronizer` 目前只估计偏移量、按 2 ms/s 渐进修正。作为
   可选的后续改进，可以在音源端对最近 N 次 ping 的偏移量做线性拟合，估计出

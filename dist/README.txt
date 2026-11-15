@@ -1,7 +1,7 @@
 同声 SameVoice（双路由 1.5.1 / 本机静音 1.2.0）
 ================================================
 
-这次提供两个 Windows 版；Windows 包内附带 Android 1.1.7，dist/android 另提供修复缓冲问题的 1.1.9。
+这次提供两个 Windows 版；Windows 包内附带 Android 1.1.7，dist/android 另提供修复缓冲和时钟微调杂音的 1.1.10。
 
 一、本机静音版（Mute）
 --------------------------------
@@ -70,19 +70,19 @@ Android 输出稳定性：
     Scream/VB-CABLE，然后把 Windows 应用路由到 Voicemeeter Input。
   - 完整步骤见包内 DUAL-ROUTE.md 或 docs/DUAL-ROUTE.md。
 
-三、Android 1.1.9
+三、Android 1.1.10
 --------------------------------
-  android/SameVoice-1.1.9.apk（release，推荐）
-  android/SameVoice-1.1.9-debug.apk
-  SameVoice-Android-1.1.9.zip
+  android/SameVoice-1.1.10.apk（release，推荐）
+  android/SameVoice-1.1.10-debug.apk
+  SameVoice-Android-1.1.10.zip
 
 新增：
   - Windows 音源 → Android 输出时，缓冲可稳定在设定值附近，不再持续降到 0。
-  - 混音时钟改为 ±3% 分数速率微调，并用小数进位保证平均速率精确。
+  - 1.1.9 的分数速率微调改为连续线性插值，移除整数丢帧/重复帧造成的周期性杂音。
   - 输出线程停顿或缓冲持续为空时自动重新锚定时间轴。
   - 详细原因与仿真见 docs/BUFFER-DRIFT.md。
 
-注意：两个 Windows 便携包内仍是 Android 1.1.7；需要缓冲修复请单独安装 1.1.9。
+注意：两个 Windows 便携包内仍是 Android 1.1.7；需要缓冲修复请单独安装 1.1.10。
 
 两个 Windows 包内都已附带：
   Android/SameVoice-1.1.6.apk
@@ -106,6 +106,6 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 SHA-256:
   027367DD0872FDF51DEFF791B25539CFE0486F67F6A58B5D302699D8409689D0  versions/mute/SameVoice-Windows-Portable.zip
   7FCCF24791FD47090C80944C9D36E6DA8956F9E64ECE36CCFF921FD971FB00F4  versions/dualroute/SameVoice-Windows-Portable.zip
-  CE05416CC774B8C0796599D4ABD712334E6C86A214C5BE1AC8D1DE41FC2B9768  SameVoice-Android-1.1.9.zip
-  502058C9CC6BC2C48229A3DA44DCE64C2BE689D90E1C76F46A5A57DC373F6814  android/SameVoice-1.1.9.apk
-  A3B138017B833C481B8718E6809CB0244E2E906AC2546B48513DD1D4368EE5EB  android/SameVoice-1.1.9-debug.apk
+  9A52F1DF0E6593473972F9BE47F4F5044AD48280F37C2D7AD241AF67C166CE3E  SameVoice-Android-1.1.10.zip
+  4BD6AFF0DA3D4B1D1B25ACD0CA96AE50415723309F46A5ECA123A4AA09CE10BF  android/SameVoice-1.1.10.apk
+  35795A15DB8C8215E832642AB0F9C912D64D6C624A9D3E64F2149D2126C1147E  android/SameVoice-1.1.10-debug.apk
