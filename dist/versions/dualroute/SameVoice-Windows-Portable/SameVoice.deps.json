@@ -1,13 +1,12 @@
 {
   "runtimeTarget": {
-    "name": ".NETCoreApp,Version=v8.0/win-x64",
+    "name": ".NETCoreApp,Version=v8.0",
     "signature": ""
   },
   "compilationOptions": {},
   "targets": {
-    ".NETCoreApp,Version=v8.0": {},
-    ".NETCoreApp,Version=v8.0/win-x64": {
-      "SameVoice/1.5.1": {
+    ".NETCoreApp,Version=v8.0": {
+      "SameVoice/1.5.2": {
         "dependencies": {
           "SameVoice.Core": "1.0.0"
         },
@@ -26,7 +25,7 @@
     }
   },
   "libraries": {
-    "SameVoice/1.5.1": {
+    "SameVoice/1.5.2": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

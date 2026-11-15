@@ -8,3 +8,5 @@
 
 说明：本版本不做自动音量补偿，也不包含双路由采集设备选择。
 需要两端音量任意独立，请使用 SameVoice-DualRoute。
+
+包内附带 Android 1.1.13 APK（Android/SameVoice-1.1.13.apk）。

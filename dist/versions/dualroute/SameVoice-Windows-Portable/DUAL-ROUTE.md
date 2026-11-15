@@ -1,6 +1,6 @@
 # 双路由版：本机与输出端音量彻底独立
 
-Windows 1.5.1 DualRoute 版使用 **虚拟调音台 + 虚拟输出**，把同一条音频分成两条
+Windows 1.5.2 DualRoute 版使用 **虚拟调音台 + 虚拟输出**，把同一条音频分成两条
 互不影响的支路：
 
 ```text
@@ -43,7 +43,7 @@ Scream 安装说明见 `docs/SCREAM.md`。Voicemeeter / VB-CABLE 从其官网安
 
 ### 2. 同声 DualRoute 设置
 
-1. 打开同声 Windows 1.5.1 DualRoute。
+1. 打开同声 Windows 1.5.2 DualRoute。
 2. 进入「共享声音」。
 3. **采集设备**选择：
    - 如果 B1 接 Scream：选择 `Scream`
@@ -62,7 +62,7 @@ Scream 安装说明见 `docs/SCREAM.md`。Voicemeeter / VB-CABLE 从其官网安
 
 ### 3. Android 端
 
-安装 Android 1.1.7，正常作为输出端；在输出端选择对应的传输音质和缓冲延迟，主音量可到 200%，每路音源音量仍可独立调整。
+安装 Android 1.1.13，正常作为输出端；在输出端选择对应的传输音质和缓冲延迟，主音量可到 200%，每路音源音量仍可独立调整。
 
 ## 为什么这样能完全独立
 
@@ -83,7 +83,7 @@ Scream 安装说明见 `docs/SCREAM.md`。Voicemeeter / VB-CABLE 从其官网安
 
 没有双路由时，本机与输出端无法严格独立，只能使用「本机静音版」的静音方案。
 
-## 应用内安装引导（Windows 1.5.1）
+## 应用内安装引导（Windows 1.5.2）
 
 共享页的双路由面板会自动检测播放端点里的虚拟声卡：
 

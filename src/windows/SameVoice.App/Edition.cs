@@ -10,5 +10,5 @@ public static class BuildEdition
     public const string DisplayName = "本机静音版";
 #endif
 
-    public const string Version = "1.5.1";
+    public const string Version = "1.5.2";
 }

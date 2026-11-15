@@ -7,12 +7,16 @@ obj/
 .gradle-home/
 .gradle/
 .android-vm/
+.toolchain/
+.tmp-build/
 src/android/app/build/
 src/android/.gradle/
 src/android/local.properties
 dist/windows/
+dist/windows-dualroute/
 dist/SameVoice-Windows-Portable/
 dist/*.zip
+*.bak
 
 # IDE / user state
 .vs/
@@ -27,3 +31,5 @@ Thumbs.db
 # Runtime artifacts
 startup.log
 *.log
+tools/.host-logcat.txt
+tools/.now.png

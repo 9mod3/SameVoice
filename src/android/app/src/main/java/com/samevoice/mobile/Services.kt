@@ -254,7 +254,11 @@ class HostService : Service() {
         } catch (_: Exception) {}
         try {
             val wifi = applicationContext.getSystemService(WifiManager::class.java)
-            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "SameVoice:Host").apply {
+            // WIFI_MODE_FULL_LOW_LATENCY (API 29+) keeps the chipset out of
+            // power save, which is what causes 100-300 ms UDP bursts on many
+            // phones; the old HIGH_PERF mode is deprecated and ignored by some
+            // OEM power managers.
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "SameVoice:Host").apply {
                 setReferenceCounted(false)
                 acquire()
             }
@@ -528,7 +532,7 @@ class ShareService : Service() {
         } catch (_: Exception) {}
         try {
             val wifi = applicationContext.getSystemService(WifiManager::class.java)
-            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "SameVoice:Share").apply {
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "SameVoice:Share").apply {
                 setReferenceCounted(false)
                 acquire()
             }

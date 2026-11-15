@@ -24,6 +24,14 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
 
     public bool IsRunning => _running;
     public string? LastError { get; private set; }
+    public string? FormatDescription { get; private set; }
+    public int BufferFrames { get; private set; } = -1;
+
+    /// <summary>
+    /// Requested WASAPI shared-mode buffer duration. 0 keeps the engine default.
+    /// A larger buffer tolerates a slow polling client (no dropped frames).
+    /// </summary>
+    public int BufferDurationMs { get; set; }
 
     public float ExtraGain
     {
@@ -81,6 +89,7 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
     private void CaptureThread()
     {
         bool comInitialized = false;
+        bool timerRaised = false;
         IMMDeviceEnumerator? enumerator = null;
         IMMDevice? device = null;
         IAudioClient? audioClient = null;
@@ -90,6 +99,14 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
             int hr = CoInitializeEx(IntPtr.Zero, 0);
             if (hr < 0) Marshal.ThrowExceptionForHR(hr);
             comInitialized = true;
+
+            // Polling a loopback endpoint uses Thread.Sleep; without a 1 ms
+            // timer resolution that sleep rounds up to ~15.6 ms and the
+            // endpoint's buffer overflows, silently dropping frames. Those
+            // lost frames make the outgoing timestamps run slow (the phone's
+            // jitter buffer then drains) and leave gaps in the audio.
+            timeBeginPeriod(1);
+            timerRaised = true;
 
             Guid clsid = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
             Guid iidEnumerator = typeof(IMMDeviceEnumerator).GUID;
@@ -112,11 +129,13 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
             hr = audioClient.GetMixFormat(out IntPtr formatPtr);
             if (hr < 0) Marshal.ThrowExceptionForHR(hr);
             var info = ParseFormat(formatPtr);
+            FormatDescription = $"{info.SampleRate} Hz, {info.Channels} ch, {info.BitsPerSample} bit" +
+                (info.IsFloat ? " float" : " pcm");
 
             hr = audioClient.Initialize(
                 0 /* shared */,
                 0x00020000 /* loopback */,
-                0,
+                BufferDurationMs * 10_000L,
                 0,
                 formatPtr,
                 IntPtr.Zero);
@@ -124,6 +143,8 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
             formatPtr = IntPtr.Zero;
             if (hr < 0)
                 throw new InvalidOperationException($"WASAPI Initialize 失败 (0x{hr:X8})");
+            if (audioClient.GetBufferSize(out uint bufferFrames) >= 0)
+                BufferFrames = (int)bufferFrames;
 
             Guid iidCapture = typeof(IAudioCaptureClient).GUID;
             hr = audioClient.GetService(ref iidCapture, out object captureObject);
@@ -154,7 +175,7 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
 
                 if (packetFrames == 0)
                 {
-                    Thread.Sleep(5);
+                    Thread.Sleep(1);
                     continue;
                 }
 
@@ -228,6 +249,7 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
         }
         finally
         {
+            if (timerRaised) timeEndPeriod(1);
             if (captureClient is not null) Marshal.ReleaseComObject(captureClient);
             if (audioClient is not null) Marshal.ReleaseComObject(audioClient);
             if (device is not null) Marshal.ReleaseComObject(device);
@@ -448,6 +470,12 @@ public sealed class WasapiLoopbackCapture : IAudioCapture24
 
     [DllImport("ole32.dll")]
     private static extern void CoUninitialize();
+
+    [DllImport("winmm.dll")]
+    private static extern uint timeBeginPeriod(uint period);
+
+    [DllImport("winmm.dll")]
+    private static extern uint timeEndPeriod(uint period);
 
     public void Dispose()
     {
