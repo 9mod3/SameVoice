@@ -120,7 +120,7 @@
                                            TextWrapping="Wrap" FontSize="10.5" Foreground="#68748A" LineHeight="17" />
                             </StackPanel>
                         </Border>
-                        <TextBlock x:Name="EditionText" Text="SameVoice 1.4.1" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
+                        <TextBlock x:Name="EditionText" Text="SameVoice 1.5.0" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -448,6 +448,29 @@
                                         </StackPanel>
                                         <TextBlock Text="Windows 会捕获默认扬声器上所有应用的声音；不会影响这些应用继续正常播放。"
                                                    Foreground="#5F6C82" FontSize="10.5" TextWrapping="Wrap" Margin="0,12,0,0" />
+
+                                        <Border x:Name="DualRouteReadinessCard" Visibility="Collapsed"
+                                                Background="#241B10" BorderBrush="#6B5230" BorderThickness="1"
+                                                CornerRadius="12" Padding="13" Margin="0,14,0,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock x:Name="DualRouteReadinessTitle" Text="双路由尚未启用"
+                                                               FontSize="11.5" FontWeight="SemiBold" Foreground="#FFD18A" />
+                                                    <TextBlock x:Name="DualRouteReadinessDetail" TextWrapping="Wrap"
+                                                               FontSize="9.8" Foreground="#C6B28D" LineHeight="16"
+                                                               Margin="0,4,0,0" MaxWidth="430" />
+                                                </StackPanel>
+                                                <Button x:Name="DualRouteGuideButton" Grid.Column="1"
+                                                        Style="{StaticResource SecondaryButton}" Content="安装/配置"
+                                                        Height="30" Padding="12,0" Margin="12,0,0,0"
+                                                        VerticalAlignment="Center" Click="DualRouteGuide_Click" />
+                                            </Grid>
+                                        </Border>
+
                                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                             <TextBlock Text="传输音质" FontSize="10.5" Foreground="#8592A8"
                                                        VerticalAlignment="Center" Margin="0,0,10,0" />

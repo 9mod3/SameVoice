@@ -10,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SameVoice.App.Audio;
+using SameVoice.App.DualRoute;
 using SameVoice.Core;
 using SameVoice.Core.Audio;
 using SameVoice.Core.Host;
@@ -98,12 +99,13 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.4.1 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice 1.5.0 · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
         {
             RefreshCaptureDevices();
+            RefreshDualRouteReadiness();
             InitializeDualVolumes();
         }
     }
@@ -166,6 +168,7 @@ public partial class MainWindow : Window
             2 => ("设置", "设备名称、音频采集方式与网络端口。"),
             _ => ("输出中心", "把同一网络里的多台设备，变成一台同步播放器。")
         };
+        if (index == 1) RefreshDualRouteReadiness();
     }
 
     // ---------------------------------------------------------------- host
@@ -539,9 +542,47 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
+    private void RefreshDualRouteReadiness()
+    {
+        if (DualRouteReadinessCard is null) return;
+        if (!BuildEdition.DualRoute)
+        {
+            DualRouteReadinessCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var status = DualRouteDetector.Detect(_settings);
+        DualRouteReadinessCard.Visibility = Visibility.Visible;
+        DualRouteReadinessTitle.Text = status.Title;
+        DualRouteReadinessDetail.Text = status.Detail;
+        DualRouteGuideButton.Content = status.IsReady ? "查看配置" : "安装/配置";
+
+        var (background, border, title, detail) = status.State switch
+        {
+            DualRouteState.Ready => ("#12261E", "#2E5C4A", "#8FE0BB", "#9FC9B8"),
+            DualRouteState.NoVirtualDevice => ("#241414", "#6B3535", "#FF9A9A", "#D9AAAA"),
+            _ => ("#241B10", "#6B5230", "#FFD18A", "#C6B28D")
+        };
+        DualRouteReadinessCard.Background = ColorBrush(background);
+        DualRouteReadinessCard.BorderBrush = ColorBrush(border);
+        DualRouteReadinessTitle.Foreground = ColorBrush(title);
+        DualRouteReadinessDetail.Foreground = ColorBrush(detail);
+    }
+
+    private static SolidColorBrush ColorBrush(string color) =>
+        new((Color)ColorConverter.ConvertFromString(color));
+
+    private void DualRouteGuide_Click(object sender, RoutedEventArgs e)
+    {
+        var guide = new VirtualAudioGuideWindow(_settings) { Owner = this };
+        guide.ShowDialog();
+        RefreshDualRouteReadiness();
+    }
+
     private void RefreshCaptureDevices_Click(object sender, RoutedEventArgs e)
     {
         RefreshCaptureDevices();
+        RefreshDualRouteReadiness();
         _vm.SetMessage("采集设备列表已刷新。");
     }
 
@@ -552,6 +593,7 @@ public partial class MainWindow : Window
         _settings.CaptureDeviceId = info.Id;
         _settings.CaptureDeviceName = info.Name;
         _settings.Save();
+        RefreshDualRouteReadiness();
         if (_source is not null)
             _vm.SetMessage("采集设备已保存，下次开始共享时生效。");
     }
@@ -563,6 +605,7 @@ public partial class MainWindow : Window
         _settings.LocalOutputDeviceId = info.Id;
         _settings.LocalOutputDeviceName = info.Name;
         _settings.Save();
+        RefreshDualRouteReadiness();
         InitializeDualVolumes();
     }
 

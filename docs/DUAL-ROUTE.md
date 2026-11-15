@@ -1,6 +1,6 @@
 # 双路由版：本机与输出端音量彻底独立
 
-Windows 1.4.1 DualRoute 版使用 **虚拟调音台 + 虚拟输出**，把同一条音频分成两条
+Windows 1.5.0 DualRoute 版使用 **虚拟调音台 + 虚拟输出**，把同一条音频分成两条
 互不影响的支路：
 
 ```text
@@ -29,6 +29,22 @@ Voicemeeter Input（虚拟输入）
    - **VB-Audio Virtual Cable**（CABLE Input）
 
 Scream 安装说明见 `docs/SCREAM.md`。Voicemeeter / VB-CABLE 从其官网安装。
+
+## 应用内引导
+
+Windows 1.5.0 起，共享页会自动检测：
+
+- 是否安装/启用了虚拟声卡
+- 采集设备是否指向 B1 虚拟输出
+- 本机输出是否是独立的 A1 物理设备
+
+未就绪时，共享页显示提示和「安装/配置」按钮。向导提供：
+
+1. Voicemeeter Banana 与 VB-CABLE 官方下载入口
+2. A1/B1 配置步骤
+3. 修改后「重新检测」
+
+同声不捆绑、不静默安装第三方驱动。安装需要管理员权限，完成后建议重启。
 
 ## 配置步骤
 
