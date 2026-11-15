@@ -1,7 +1,7 @@
 同声 SameVoice（双路由 1.5.0 / 本机静音 1.2.0）
 ================================================
 
-这次提供两个 Windows 版，Android 输出端共用 1.1.7。
+这次提供两个 Windows 版，Android 输出端共用 1.1.8。
 
 一、本机静音版（Mute）
 --------------------------------
@@ -69,20 +69,20 @@ Android 输出稳定性：
     Scream/VB-CABLE，然后把 Windows 应用路由到 Voicemeeter Input。
   - 完整步骤见包内 DUAL-ROUTE.md 或 docs/DUAL-ROUTE.md。
 
-三、Android 1.1.7
+三、Android 1.1.8
 --------------------------------
-  android/SameVoice-1.1.7.apk（release，推荐）
-  android/SameVoice-1.1.7-debug.apk
-  SameVoice-Android-1.1.7.zip
+  android/SameVoice-1.1.8.apk（release，推荐）
+  android/SameVoice-1.1.8-debug.apk
+  SameVoice-Android-1.1.8.zip
 
 新增：
-  - 混音时间轴锚定 AudioTrack 实际播放位置，修复显示缓冲低于设定值。
-  - 缓冲漂移微调，避免网络缓冲持续变小导致周期性卡顿。
-  - 保持原 AudioTrack 缓冲和线程优先级，不引入额外延迟。
+  - 缓冲调节加入“变化斜率”前馈，不再等缓冲已经很低才反应。
+  - 漂移修正范围扩大到每块 ±4 帧，面向 Windows 音源 → Android 输出场景。
+  - 继续锚定 AudioTrack 实际播放位置，显示值应对应设定缓冲。
 
 两个 Windows 包内都已附带：
-  Android/SameVoice-1.1.6.apk
-  Android/SameVoice-1.1.6-debug.apk
+  Android/SameVoice-1.1.8.apk
+  Android/SameVoice-1.1.8-debug.apk
 
 四、Scream 说明
 --------------------------------
@@ -101,7 +101,7 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 
 SHA-256:
   027367DD0872FDF51DEFF791B25539CFE0486F67F6A58B5D302699D8409689D0  versions/mute/SameVoice-Windows-Portable.zip
-  124EEAFB900E9A6144C0BA8CFB7A605105482A4D769AAD444F1375F1EDAB49C5  versions/dualroute/SameVoice-Windows-Portable.zip
-  9E4A26D9726FAC3F47D04149B0DAAC877D8AFE22905CA168855AAADA61F718C7  SameVoice-Android-1.1.7.zip
-  29A02F727415FD755D4EF7677D8CDD9A5C80232CDB0F8889B1C546DD59E3B2A5  android/SameVoice-1.1.7.apk
-  3E7B5508A9007254D0C4F1EB938D02B47838CD6BF607B1FD657E3461C80ABEA7  android/SameVoice-1.1.7-debug.apk
+  E0F67F8AF4856DBDC527F729A6A59C6D0A9D18EC1DCBDC3FB53F056414BD2DC0  versions/dualroute/SameVoice-Windows-Portable.zip
+  D6A1FF4AB1FDAE5978FCC4CCEC977D3C9F19CAF0C6D12297F173E5E7AF18E06B  SameVoice-Android-1.1.8.zip
+  C78A84501A74E725EC7F81029F8D8E933453373B501C597180AF13225C69BAE2  android/SameVoice-1.1.8.apk
+  F09CA0175788B0AA83D826FBD745A41DCCD48884888D69E94DF55DC39BEAA3B3  android/SameVoice-1.1.8-debug.apk

@@ -1508,7 +1508,7 @@ class MainActivity : Activity() {
         })
         box.addView(divider())
         box.addView(text(
-            "同声 SameVoice 1.1.7\n" +
+            "同声 SameVoice 1.1.8\n" +
                 "音频 48 kHz · 立体声 · PCM 16-bit\n" +
                 "共享音频模式，不请求独占音频焦点\n" +
                 "所有数据仅在同一局域网内传输",

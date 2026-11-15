@@ -710,6 +710,9 @@ private class MixEngine(initialMode: HostMode) {
     private var targetMs = initialMode.bufferMs
     private var running = false
     private var lastReanchorMs = 0L
+    private var lastAheadMs = -1.0
+    private var lastAheadAtUs = 0L
+    private var driftEmaMsPerSec = 0.0
 
     @Volatile var masterVolume = 0.8f
     @Volatile var peak = 0.0
@@ -724,6 +727,9 @@ private class MixEngine(initialMode: HostMode) {
             // app changes the output route/buffer).
             startUs = Protocol.nowUs() - outputLatencyUs
             renderedFrames = 0
+            lastAheadMs = -1.0
+            lastAheadAtUs = 0L
+            driftEmaMsPerSec = 0.0
             running = true
         }
     }
@@ -826,13 +832,42 @@ private class MixEngine(initialMode: HostMode) {
             if (active > 0) {
                 val aheadMs = activeTimelines.minOf { it.bufferAheadMs(renderedFrames) }
                 val errorMs = aheadMs - targetMs
-                advanceFrames += when {
-                    errorMs < -80 -> -2
-                    errorMs < -20 -> -1
-                    errorMs > 100 -> 2
-                    errorMs > 40 -> 1
+                val nowUs = Protocol.nowUs()
+
+                // Feed-forward the measured slope as well as the current
+                // error. A pure threshold controller reacts only after the
+                // buffer has already drifted; this catches a steady drain
+                // before it reaches the underrun point.
+                if (lastAheadMs >= 0.0 && nowUs > lastAheadAtUs) {
+                    val elapsedSec = (nowUs - lastAheadAtUs) / 1_000_000.0
+                    if (elapsedSec >= 0.8) {
+                        val rate = (aheadMs - lastAheadMs) / elapsedSec
+                        driftEmaMsPerSec = driftEmaMsPerSec * 0.7 + rate * 0.3
+                        lastAheadMs = aheadMs
+                        lastAheadAtUs = nowUs
+                    }
+                }
+                else {
+                    lastAheadMs = aheadMs
+                    lastAheadAtUs = nowUs
+                }
+
+                val errorCorrection = when {
+                    errorMs < -80 -> -4
+                    errorMs < -20 -> -2
+                    errorMs > 100 -> 4
+                    errorMs > 40 -> 2
                     else -> 0
                 }
+                // 1 ms/s of drain is 48 frames/s, or 0.48 frames per
+                // 10 ms render block.
+                val feedForward = (driftEmaMsPerSec * 0.48).roundToInt()
+                advanceFrames += (errorCorrection + feedForward).coerceIn(-4, 4)
+            }
+            else {
+                lastAheadMs = -1.0
+                lastAheadAtUs = 0L
+                driftEmaMsPerSec = 0.0
             }
             advanceFrames = advanceFrames.coerceAtLeast(1)
 
