@@ -10,7 +10,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SameVoice.App.Audio;
-using SameVoice.App.DualRoute;
 using SameVoice.Core;
 using SameVoice.Core.Audio;
 using SameVoice.Core.Host;
@@ -99,14 +98,14 @@ public partial class MainWindow : Window
 
     private void InitializeEdition()
     {
-        EditionText.Text = $"SameVoice 1.5.0 · {BuildEdition.DisplayName}";
+        EditionText.Text = $"SameVoice {BuildEdition.Version} · {BuildEdition.DisplayName}";
         DualRoutePanel.Visibility = BuildEdition.DualRoute ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.Visibility = Visibility.Collapsed;
         if (BuildEdition.DualRoute)
         {
             RefreshCaptureDevices();
-            RefreshDualRouteReadiness();
             InitializeDualVolumes();
+            UpdateVirtualDeviceHint();
         }
     }
 
@@ -168,7 +167,6 @@ public partial class MainWindow : Window
             2 => ("设置", "设备名称、音频采集方式与网络端口。"),
             _ => ("输出中心", "把同一网络里的多台设备，变成一台同步播放器。")
         };
-        if (index == 1) RefreshDualRouteReadiness();
     }
 
     // ---------------------------------------------------------------- host
@@ -542,47 +540,102 @@ public partial class MainWindow : Window
         _settings.Save();
     }
 
-    private void RefreshDualRouteReadiness()
+    // ---------------------------------------------------------------- virtual audio guide
+
+    /// <summary>
+    /// Keeps the dual-route hint honest: capture and local playback must be two
+    /// different endpoints, otherwise muting this PC also mutes the stream.
+    /// </summary>
+    private void UpdateVirtualDeviceHint()
     {
-        if (DualRouteReadinessCard is null) return;
-        if (!BuildEdition.DualRoute)
+        if (!BuildEdition.DualRoute || VirtualDeviceHintBorder is null) return;
+
+        var endpoints = AudioEndpointEnumerator.GetRenderEndpoints();
+        var refs = endpoints.Select(endpoint => new AudioEndpointRef(endpoint.Id, endpoint.Name)).ToList();
+        var candidate = VirtualAudioDeviceCatalog.PickCaptureEndpoint(refs);
+        bool sameEndpoint = VirtualAudioDeviceCatalog.SameEndpoint(
+            _settings.CaptureDeviceId, _settings.LocalOutputDeviceId);
+        var current = endpoints.FirstOrDefault(endpoint => endpoint.Id == _settings.CaptureDeviceId);
+        string currentName = string.IsNullOrWhiteSpace(current?.Name) ? "默认播放设备" : current!.Name;
+
+        if (candidate is null)
         {
-            DualRouteReadinessCard.Visibility = Visibility.Collapsed;
+            VirtualDeviceHintBorder.Visibility = Visibility.Visible;
+            VirtualDeviceHintTitle.Text = "未检测到虚拟声卡";
+            VirtualDeviceHintDetail.Text =
+                "「采集设备」和「本机输出」现在是同一个端点，点「本机静音」会把送往输出端的声音一起静音。装一个虚拟声卡就能把两路分开。";
+            VirtualDeviceHintButton.Content = "安装引导";
             return;
         }
 
-        var status = DualRouteDetector.Detect(_settings);
-        DualRouteReadinessCard.Visibility = Visibility.Visible;
-        DualRouteReadinessTitle.Text = status.Title;
-        DualRouteReadinessDetail.Text = status.Detail;
-        DualRouteGuideButton.Content = status.IsReady ? "查看配置" : "安装/配置";
-
-        var (background, border, title, detail) = status.State switch
+        bool captureUsesVirtual =
+            string.Equals(_settings.CaptureDeviceId, candidate.Id, StringComparison.OrdinalIgnoreCase);
+        if (captureUsesVirtual && !sameEndpoint)
         {
-            DualRouteState.Ready => ("#12261E", "#2E5C4A", "#8FE0BB", "#9FC9B8"),
-            DualRouteState.NoVirtualDevice => ("#241414", "#6B3535", "#FF9A9A", "#D9AAAA"),
-            _ => ("#241B10", "#6B5230", "#FFD18A", "#C6B28D")
-        };
-        DualRouteReadinessCard.Background = ColorBrush(background);
-        DualRouteReadinessCard.BorderBrush = ColorBrush(border);
-        DualRouteReadinessTitle.Foreground = ColorBrush(title);
-        DualRouteReadinessDetail.Foreground = ColorBrush(detail);
+            VirtualDeviceHintBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        VirtualDeviceHintBorder.Visibility = Visibility.Visible;
+        VirtualDeviceHintButton.Content = "修复配置";
+        if (!captureUsesVirtual)
+        {
+            VirtualDeviceHintTitle.Text = "已检测到虚拟声卡：" + candidate.Name;
+            VirtualDeviceHintDetail.Text = sameEndpoint
+                ? $"但「采集设备」和「本机输出」还停在同一个端点（{currentName}）。把采集设为 {candidate.Name}、本机输出设为物理扬声器，本机静音才只影响本机。"
+                : $"但采集设备仍是「{currentName}」。把它设为 {candidate.Name}、本机输出设为物理扬声器，本机静音才只影响本机。";
+        }
+        else
+        {
+            VirtualDeviceHintTitle.Text = "采集与本机输出是同一个端点";
+            VirtualDeviceHintDetail.Text =
+                $"两边都指向「{candidate.Name}」，点「本机静音」会把采集流一起静音。把本机输出改成物理扬声器即可分开。";
+        }
     }
 
-    private static SolidColorBrush ColorBrush(string color) =>
-        new((Color)ColorConverter.ConvertFromString(color));
+    private void VirtualDeviceGuide_Click(object sender, RoutedEventArgs e) => ShowVirtualAudioGuide();
 
-    private void DualRouteGuide_Click(object sender, RoutedEventArgs e)
+    private void ShowVirtualAudioGuide()
     {
-        var guide = new VirtualAudioGuideWindow(_settings) { Owner = this };
-        guide.ShowDialog();
-        RefreshDualRouteReadiness();
+        if (!BuildEdition.DualRoute) return;
+        try
+        {
+            var dialog = new VirtualAudioGuideDialog(
+                _settings.CaptureDeviceId, _settings.CaptureDeviceName,
+                _settings.LocalOutputDeviceId, _settings.LocalOutputDeviceName)
+            {
+                Owner = this
+            };
+            bool applied = dialog.ShowDialog() == true && dialog.ApplyRequested;
+            if (!applied)
+            {
+                UpdateVirtualDeviceHint();
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dialog.AppliedCaptureId))
+                _settings.CaptureDeviceId = dialog.AppliedCaptureId!;
+            if (!string.IsNullOrWhiteSpace(dialog.AppliedLocalOutputId))
+                _settings.LocalOutputDeviceId = dialog.AppliedLocalOutputId!;
+            _settings.Save();
+
+            RefreshCaptureDevices();
+            InitializeDualVolumes();
+            UpdateVirtualDeviceHint();
+
+            string suffix = _source is null ? "" : "正在共享时，请停止后重新开始共享以生效。";
+            _vm.SetMessage("已保存双路由设备：采集走虚拟声卡，本机输出走物理扬声器。" + suffix);
+        }
+        catch (Exception ex)
+        {
+            _vm.SetMessage("打开安装引导失败：" + ex.Message);
+        }
     }
 
     private void RefreshCaptureDevices_Click(object sender, RoutedEventArgs e)
     {
         RefreshCaptureDevices();
-        RefreshDualRouteReadiness();
+        UpdateVirtualDeviceHint();
         _vm.SetMessage("采集设备列表已刷新。");
     }
 
@@ -593,7 +646,7 @@ public partial class MainWindow : Window
         _settings.CaptureDeviceId = info.Id;
         _settings.CaptureDeviceName = info.Name;
         _settings.Save();
-        RefreshDualRouteReadiness();
+        UpdateVirtualDeviceHint();
         if (_source is not null)
             _vm.SetMessage("采集设备已保存，下次开始共享时生效。");
     }
@@ -605,7 +658,7 @@ public partial class MainWindow : Window
         _settings.LocalOutputDeviceId = info.Id;
         _settings.LocalOutputDeviceName = info.Name;
         _settings.Save();
-        RefreshDualRouteReadiness();
+        UpdateVirtualDeviceHint();
         InitializeDualVolumes();
     }
 

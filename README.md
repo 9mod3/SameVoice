@@ -31,7 +31,7 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
-| Windows 1.5.0 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 虚拟声卡检测与安装配置向导；A1/B1 双路由 |
+| Windows 1.5.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 虚拟声卡安装引导（VB-CABLE/Voicemeeter/Scream）；A1/B1 双路由 |
 | Android 10+ | `dist/android/SameVoice-1.1.7.apk` | 使用仓库内演示签名，允许侧载 |
 | Android（调试版） | `dist/android/SameVoice-1.1.7-debug.apk` | 调试签名，便于 logcat |
 
@@ -284,7 +284,7 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Windows 1.3.1：本机静音后调节本机音量不再自动解除静音，调完音量后恢复静音状态。
 - Windows 1.4.0 / Android 1.1.3：输出端新增 40–1000 ms 手动缓冲延迟滑杆；120/240 ms 预设仍保留。
 - Windows 1.4.1 / Android 1.1.4：输出端主音量上限从 100% 提高到 200%；Android「全满」设为 200%。
-- Windows 1.5.0：共享页增加双路由就绪检测与「安装/配置」向导，支持 Voicemeeter Banana / VB-CABLE 官方下载和 A1/B1 配置步骤。
+- Windows 1.5.1：合并虚拟声卡安装引导：检测 Scream / VB-CABLE / Voicemeeter，提供三方案下载与安装步骤，识别后可一键设置采集端点和本机物理输出。
 - Android 1.1.5：AudioTrack 缓冲提高到约 100 ms，输出线程使用 urgent audio 优先级。
 - Android 1.1.6：增加缓冲漂移微调，按 ±1/±2 帧滑动时间线游标，避免缓冲越来越小导致周期性卡顿；AudioTrack 缓冲保持原大小。
 - Android 1.1.7：把混音时间轴锚定到 AudioTrack 实际播放位置，修复显示缓冲比设定值少一个输出缓冲的问题。
