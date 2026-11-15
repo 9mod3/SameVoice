@@ -709,7 +709,19 @@ private class MixEngine(initialMode: HostMode) {
     private var renderedFrames = 0L
     private var targetMs = initialMode.bufferMs
     private var running = false
-    private var lastReanchorMs = 0L
+
+    // Clock-trim state. The phone's playback device and the source device never
+    // run at exactly 48 kHz, and the source timestamp rate is derived from its
+    // own capture clock. A fixed +/-2 frame nudge per block could only absorb
+    // 0.4 % of that difference; anything larger drained the queue to zero.
+    // The trim lets the mix cursor run at 1 +/- 3 % of the AudioTrack rate, and
+    // the carry keeps the sub-frame remainder so the average rate is exact.
+    private var trim = 0.0
+    private var smoothErrorMs = 0.0
+    private var rateCarry = 0.0
+    @Volatile private var writtenProgressUs = 0L
+    private var emptySinceUs = 0L
+    private var lastResyncUs = 0L
 
     @Volatile var masterVolume = 0.8f
     @Volatile var peak = 0.0
@@ -724,6 +736,12 @@ private class MixEngine(initialMode: HostMode) {
             // app changes the output route/buffer).
             startUs = Protocol.nowUs() - outputLatencyUs
             renderedFrames = 0
+            trim = 0.0
+            smoothErrorMs = 0.0
+            rateCarry = 0.0
+            emptySinceUs = 0L
+            lastResyncUs = 0L
+            writtenProgressUs = Protocol.nowUs()
             running = true
         }
     }
@@ -775,28 +793,37 @@ private class MixEngine(initialMode: HostMode) {
 
     fun push(id: Int, captureHostUs: Long, samples: FloatArray, frames: Int) {
         val timeline = synchronized(sourcesLock) { sources[id] } ?: return
-        val target: Int
-        val start: Long
-        val rendered: Long
-        var reanchor = false
+        var startFrame = 0L
+        var rendered = 0L
+        var resync = false
         synchronized(renderLock) {
             if (!running) return
-            val renderedTimeUs = startUs + renderedFrames * 1_000_000L / Protocol.SAMPLE_RATE
-            val lagUs = Protocol.nowUs() - renderedTimeUs
-            val nowMs = android.os.SystemClock.elapsedRealtime()
-            if (lagUs > 300_000 && nowMs - lastReanchorMs > 800) {
-                lastReanchorMs = nowMs
-                startUs += lagUs
-                reanchor = true
-            }
-            target = targetMs
-            start = startUs
+            val target = targetMs
+            val nowUs = Protocol.nowUs()
             rendered = renderedFrames
-        }
-        if (reanchor) clearBuffers()
 
-        val relative = captureHostUs + target * 1000L - start
-        val startFrame = (relative * Protocol.SAMPLE_RATE / 1_000_000.0).roundToLongSafe()
+            // Two independent reasons to move the scheduling origin forward:
+            //  * the blocking AudioTrack write stalled, so the mix cursor no
+            //    longer follows wall-clock time;
+            //  * the queue stayed empty for a second, which means the packets
+            //    are now scheduled behind the cursor (clock difference larger
+            //    than the trim can absorb). Without this the old code dropped
+            //    every following packet and stayed silent until a restart.
+            val stalled = nowUs - writtenProgressUs > 500_000L
+            val drained = emptySinceUs != 0L && nowUs - emptySinceUs > 1_000_000L &&
+                captureHostUs > nowUs - 500_000L
+            if ((stalled || drained) && nowUs - lastResyncUs > 1_000_000L) {
+                lastResyncUs = nowUs
+                startUs = captureHostUs + target * 1000L -
+                    rendered * 1_000_000L / Protocol.SAMPLE_RATE
+                resync = true
+            }
+
+            val relative = captureHostUs + target * 1000L - startUs
+            startFrame = (relative * Protocol.SAMPLE_RATE / 1_000_000.0).roundToLongSafe()
+        }
+        if (resync) clearBuffers()
+
         if (startFrame + frames <= rendered - Protocol.SAMPLE_RATE / 4) return
         if (startFrame > rendered + Protocol.SAMPLE_RATE * 10L) return
         timeline.push(startFrame, samples, frames)
@@ -818,23 +845,29 @@ private class MixEngine(initialMode: HostMode) {
             val active = activeTimelines.size
             val normalization = if (active > 1) 1f / active else 1f
 
-            // Clock drift between the phone audio DAC and the source device's
-            // capture clock slowly drains or grows the jitter buffer. Nudge
-            // the timeline cursor by a fraction of a frame per block instead
-            // of letting the buffer collapse into periodic underruns.
-            var advanceFrames = frames
+            // Clock drift between the phone's playback clock and the source's
+            // capture clock slowly drains or grows the jitter buffer. Instead
+            // of a fixed +/-2 frame nudge (only 0.4 % of range), run the mix
+            // cursor at 1 +/- 3 % of the AudioTrack rate. The PI-ish loop is
+            // smoothed so packet-sized (2.5/5 ms) timestamp steps do not turn
+            // into pitch wobble, and the carry keeps the sub-frame remainder.
+            val nowUs = Protocol.nowUs()
             if (active > 0) {
-                val aheadMs = activeTimelines.minOf { it.bufferAheadMs(renderedFrames) }
-                val errorMs = aheadMs - targetMs
-                advanceFrames += when {
-                    errorMs < -80 -> -2
-                    errorMs < -20 -> -1
-                    errorMs > 100 -> 2
-                    errorMs > 40 -> 1
-                    else -> 0
-                }
+                emptySinceUs = 0L
+            } else if (emptySinceUs == 0L) {
+                emptySinceUs = nowUs
             }
-            advanceFrames = advanceFrames.coerceAtLeast(1)
+            val errorMs = if (active > 0)
+                activeTimelines.minOf { it.bufferAheadMs(renderedFrames) } - targetMs
+            else
+                -targetMs.toDouble()
+            smoothErrorMs += (errorMs - smoothErrorMs) * 0.08
+            val wanted = (smoothErrorMs * 0.0004).coerceIn(-0.03, 0.03)
+            trim += (wanted - trim) * 0.05
+            rateCarry += (1.0 + trim) * frames
+            var advanceFrames = rateCarry.toLong()
+            rateCarry -= advanceFrames.toDouble()
+            if (advanceFrames < 1) advanceFrames = 1
 
             for (timeline in timelines) {
                 timeline.mixInto(acc, renderedFrames, frames, timeline.volume * normalization)
@@ -848,6 +881,7 @@ private class MixEngine(initialMode: HostMode) {
             }
             peak = maxPeak
             renderedFrames += advanceFrames
+            writtenProgressUs = Protocol.nowUs()
         }
     }
 

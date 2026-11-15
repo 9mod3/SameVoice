@@ -21,6 +21,6 @@ try {
 
 $out = Join-Path $root "dist/android"
 New-Item -ItemType Directory -Force $out | Out-Null
-Copy-Item (Join-Path $android "app/build/outputs/apk/release/app-release.apk") (Join-Path $out "SameVoice-1.1.1.apk") -Force
-Copy-Item (Join-Path $android "app/build/outputs/apk/debug/app-debug.apk") (Join-Path $out "SameVoice-1.1.1-debug.apk") -Force
-Write-Host "Done: dist/android/SameVoice-1.1.1.apk" -ForegroundColor Green
+Copy-Item (Join-Path $android "app/build/outputs/apk/release/app-release.apk") (Join-Path $out "SameVoice-1.1.9.apk") -Force
+Copy-Item (Join-Path $android "app/build/outputs/apk/debug/app-debug.apk") (Join-Path $out "SameVoice-1.1.9-debug.apk") -Force
+Write-Host "Done: dist/android/SameVoice-1.1.9.apk" -ForegroundColor Green

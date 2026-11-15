@@ -7,6 +7,7 @@ obj/
 .gradle-home/
 .gradle/
 .android-vm/
+.toolchain/
 src/android/app/build/
 src/android/.gradle/
 src/android/local.properties

@@ -32,10 +32,11 @@
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
 | Windows 1.5.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 虚拟声卡安装引导（VB-CABLE/Voicemeeter/Scream）；A1/B1 双路由 |
-| Android 10+ | `dist/android/SameVoice-1.1.7.apk` | 使用仓库内演示签名，允许侧载 |
-| Android（调试版） | `dist/android/SameVoice-1.1.7-debug.apk` | 调试签名，便于 logcat |
+| Android 10+ | `dist/android/SameVoice-1.1.9.apk` | 使用仓库内演示签名，允许侧载 |
+| Android（调试版） | `dist/android/SameVoice-1.1.9-debug.apk` | 调试签名，便于 logcat |
 
-两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.7 APK。完整选择说明见
+两个 Windows 版本都已内置 .NET 8 运行时，并附带 Android 1.1.7 APK；`dist/android`
+另提供修复了输出端缓冲问题的 1.1.9。完整选择说明见
 [`dist/README.txt`](dist/README.txt)。
 
 ### 1. 选择版本
@@ -143,6 +144,7 @@ same_voice/
 │   ├── SameVoice.Probe/         # 合成正弦音源，用于协议/混音联调
 │   ├── SameVoice.LoopbackProbe/ # WASAPI 采集 → 网络 → 混音全链路自测
 │   ├── SameVoice.SinkProbe/     # 合成音源 + waveOut 播放缓冲/延迟验证
+│   ├── timeline-sim/            # 抖动缓冲/时钟微调控制环仿真（Python）
 │   └── allow-firewall.ps1       # Windows 防火墙放行脚本
 ├── docs/
 ├── dist/                        # 预构建 Windows 便携版与 Android APK
@@ -185,9 +187,18 @@ dotnet publish src/windows/SameVoice.App/SameVoice.App.csproj `
 
 ### Android
 
+仓库根目录的 `.toolchain/` 是一套独立工具链（JDK 17 + Android SDK，已被 `.gitignore`
+忽略、不污染系统 PATH），可用 `python scripts/setup-android-toolchain.py` 重新下载；
+首次还需要在 SDK 里安装 `platforms;android-34`、`build-tools;34.0.0`，并让
+`src/android/local.properties` 的 `sdk.dir` 指向 `.toolchain/android-sdk`。
+
 ```powershell
+$env:JAVA_HOME="$PWD\.toolchain\jdk"
+$env:ANDROID_HOME="$PWD\.toolchain\android-sdk"
+$env:ANDROID_USER_HOME="$PWD\.toolchain\android-home"
+$env:GRADLE_USER_HOME="$PWD\.gradle-home"   # 复用仓库内的 Gradle 缓存与 8.5 发行版
 cd src/android
-./gradlew.bat assembleRelease
+./gradlew.bat --no-daemon assembleRelease
 # 输出：app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -242,6 +253,7 @@ powershell -ExecutionPolicy Bypass -File tools/allow-firewall.ps1
 | Windows 托盘图标看不到 | 升级到 Windows 1.0.7；新版改用原生 Shell_NotifyIcon 并记录错误码。若 `%LOCALAPPDATA%\SameVoice\tray.log` 中为 `error=5`，说明资源管理器与同声的权限级别不一致，请尝试以管理员身份运行同声，或把资源管理器重启为普通权限 |
 | 多路声音不同步 | 使用「同步优先」；两台设备都保持 Wi-Fi 稳定；不同蓝牙耳机本身存在固定延迟差 |
 | 输出端延迟突然变大 | 自动延迟回收已处理；仍持续出现请检查 CPU/音频驱动；重启输出 |
+| Android 输出端缓冲持续变小，直到 0 后断续/静音 | Android 1.1.9 已修复（混音时钟微调范围过窄 + 归零后无法自愈）；升级输出端 APK，详见 [docs/BUFFER-DRIFT.md](docs/BUFFER-DRIFT.md)。临时可把「手动缓冲延迟」调大，掉到 0 后停止并重新启动输出 |
 | 安卓打开即闪退 | 1.0.1 已加入启动崩溃恢复页；再次打开会显示「上次启动失败」并可以复制完整日志，请把日志发给开发者 |
 | 停止后仍有托盘/通知 | Windows 右键托盘退出；Android 在通知中点“停止” |
 | Android 无法启动共享 | 检查录音、通知权限；Android 14 选择“整个屏幕”；部分 OEM 需在系统设置中允许后台运行 |
@@ -288,4 +300,5 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Android 1.1.5：AudioTrack 缓冲提高到约 100 ms，输出线程使用 urgent audio 优先级。
 - Android 1.1.6：增加缓冲漂移微调，按 ±1/±2 帧滑动时间线游标，避免缓冲越来越小导致周期性卡顿；AudioTrack 缓冲保持原大小。
 - Android 1.1.7：把混音时间轴锚定到 AudioTrack 实际播放位置，修复显示缓冲比设定值少一个输出缓冲的问题。
+- Android 1.1.9：混音时钟由 ±2 帧整数微调（仅 ±0.4%）改为 ±3% 分数速率微调，修复 Windows 音源（虚拟声卡/蓝牙等时钟差较大的链路）时缓冲持续变小、归零后无法恢复的问题；输出线程停顿或缓冲持续为空时重新锚定时间轴，替代会误触发的 300 ms 游标重锚。详见 [docs/BUFFER-DRIFT.md](docs/BUFFER-DRIFT.md)。
 - 测试断言：54/54 通过。
