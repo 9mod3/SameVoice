@@ -31,7 +31,7 @@
 | 平台 | 文件 | 说明 |
 | --- | --- | --- |
 | Windows 1.2.0 本机静音版 | `dist/versions/mute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 只需本机静音、输出端最大 |
-| Windows 1.6.0 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 多输出、虚拟声卡引导、A1/B1 双路由 |
+| Windows 1.6.1 双路由版 | `dist/versions/dualroute/SameVoice-Windows-Portable/Start-SameVoice.cmd` | 每台输出端独立选择/断开；A1/B1 双路由 |
 | Android 10+ | `dist/android/SameVoice-1.1.13.apk` | 使用仓库内演示签名，允许侧载 |
 | Android（调试版） | `dist/android/SameVoice-1.1.13-debug.apk` | 调试签名，便于 logcat |
 
@@ -307,5 +307,5 @@ MIT License。音频采集/播放仅使用操作系统公开 API，没有捆绑�
 - Android 1.1.12：重同步的「时间戳新鲜度」窗口改为 `目标缓冲 + 500 ms`。固定 500 ms 在 881 ms 手动缓冲下会失效：队列耗尽时包的时间戳天然落后约一个 target，重同步永远不触发，输出一直静音。配合 1.1.11 的落点修正，重同步后缓冲直接回到目标值。
 - Android 1.1.13：重同步改为「连续迟到 + 缓冲为空」触发（不再依赖时间戳新鲜度窗口）；源端时钟超出 ±3% 或时间戳跳变导致队列耗尽时 200 ms 内恢复，并把缓冲直接放回目标值；网络抖动造成的短暂迟到不会误触发。
 - Windows 1.5.2：修复 WASAPI loopback 采集线程缺少 1 ms 定时器精度导致的约 5% 帧丢失——Thread.Sleep(5) 实际睡 15.6 ms，22 ms 回环缓冲溢出；采集线程现在 	imeBeginPeriod(1) 并按 1 ms 轮询。这是 Android 输出端缓冲持续变小、周期性卡顿和「沙沙」杂音的根因。
-- Windows 1.6.0：Windows 音源支持同时连接多台输出端；共享页可多选，每台独立时钟同步、发送和断开，一台掉线不影响其他。当前 Android 音源仍为单输出。
+- Windows 1.6.1：多输出改为每台输出端独立控制——点「选择」连接，按钮变「已选」后再点只断开这一台；可继续连接其他输出端，一台掉线不影响其他。当前 Android 音源仍为单输出。
 - 测试断言：63/63 通过。

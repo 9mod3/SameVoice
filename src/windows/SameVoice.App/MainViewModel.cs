@@ -83,7 +83,8 @@ public sealed class SourceRowViewModel : INotifyPropertyChanged
 
 public sealed class DiscoveredHostViewModel : INotifyPropertyChanged
 {
-    private bool _isSelected;
+    private bool _isConnected;
+    private bool _isBusy;
 
     public HostOffer Offer { get; }
     public string Name { get; }
@@ -93,18 +94,29 @@ public sealed class DiscoveredHostViewModel : INotifyPropertyChanged
     public string Initial { get; }
     public string Address { get; }
     public string DetailsLine => $"{Details} · {SourceText}";
-    public bool IsSelected
+    public bool IsConnected
     {
-        get => _isSelected;
+        get => _isConnected;
         set
         {
-            if (_isSelected == value) return;
-            _isSelected = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            if (_isConnected == value) return;
+            _isConnected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsConnected)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectText)));
         }
     }
-    public string SelectText => IsSelected ? "已选" : "选择";
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set
+        {
+            if (_isBusy == value) return;
+            _isBusy = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBusy)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectText)));
+        }
+    }
+    public string SelectText => IsBusy ? "连接中…" : IsConnected ? "已选" : "选择";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         IAudioCapture Capture,
         string HostName,
         string Address,
+        DiscoveredHostViewModel? Row,
         Action<SourceClientStatus> StatusHandler,
         Action<string> FaultHandler);
 
@@ -388,12 +389,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ConnectHost_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: DiscoveredHostViewModel row }) return;
-        await ConnectToHostAsync(row.Offer);
-    }
-
     private async void ConnectManualIp_Click(object sender, RoutedEventArgs e)
     {
         string raw = ManualIpBox.Text.Trim();
@@ -404,108 +399,112 @@ public partial class MainWindow : Window
         }
         var offer = new HostOffer("manual", raw, "unknown", ProtocolConstants.DefaultControlPort,
             HostMode.Balanced, 0, false, ip);
-        await ConnectToHostAsync(offer);
+        await ConnectSingleAsync(offer, null);
     }
 
-    private async Task ConnectToHostAsync(HostOffer offer)
+    private async void ToggleHost_Click(object sender, RoutedEventArgs e)
     {
-        var offers = SelectedOffers();
-        if (!offers.Any(o => string.Equals(o.AddressText, offer.AddressText, StringComparison.OrdinalIgnoreCase)))
-            offers.Add(offer);
-        await ConnectToHostsAsync(offers);
-    }
-
-    private List<HostOffer> SelectedOffers() =>
-        _vm.Hosts.Where(h => h.IsSelected).Select(h => h.Offer).ToList();
-
-    private async void ConnectSelectedHosts_Click(object sender, RoutedEventArgs e)
-    {
-        var offers = SelectedOffers();
-        if (offers.Count == 0)
+        if (sender is not FrameworkElement { Tag: DiscoveredHostViewModel row }) return;
+        if (row.IsBusy) return;
+        if (row.IsConnected)
         {
-            _vm.SetMessage("请先在输出端列表中勾选至少一个设备。");
+            await DisconnectOutputAsync(row);
             return;
         }
-        await ConnectToHostsAsync(offers);
+        await ConnectSingleAsync(row.Offer, row);
     }
 
-    private void ToggleHost_Click(object sender, RoutedEventArgs e)
+    private async Task ConnectSingleAsync(HostOffer offer, DiscoveredHostViewModel? row)
     {
-        if (sender is FrameworkElement { Tag: DiscoveredHostViewModel row })
-            row.IsSelected = !row.IsSelected;
-    }
-
-    private async Task ConnectToHostsAsync(IReadOnlyList<HostOffer> offers)
-    {
-        if (_connectingShare || HasShares) return;
+        if (_connectingShare) return;
         if (_host is not null)
         {
             MessageBox.Show(this, "当前设备正在作为输出端。请先停止输出，再共享本机声音。",
                 "同声", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (offers.Count == 0) return;
 
         _connectingShare = true;
+        if (row is not null) row.IsBusy = true;
         _vm.SetBusy(true);
         HostToggleButton.IsEnabled = false;
-        SharePrimaryButton.IsEnabled = false;
-        _vm.SetShareStatus(new SourceClientStatus(
-            SourceState.Connecting, _settings.DeviceName, offers[0].Name, offers[0].AddressText,
-            offers[0].Mode, $"正在连接 {offers.Count} 个输出端…", -1, 0, 0, 0, false));
 
-        var failures = new List<string>();
-        foreach (var offer in offers)
+        SourceClient? client = null;
+        IAudioCapture? capture = null;
+        try
         {
-            SourceClient? client = null;
-            IAudioCapture? capture = null;
-            try
+            capture = CreateCapture();
+            var candidate = new SourceClient(_settings.DeviceName, "windows", capture, _settings.PreferredQuality);
+            client = candidate;
+            Action<SourceClientStatus> statusHandler = status => Source_StatusChanged(candidate, status);
+            Action<string> faultHandler = message => Source_Faulted(candidate, message);
+            candidate.StatusChanged += statusHandler;
+            candidate.Faulted += faultHandler;
+            await candidate.ConnectAsync(offer);
+            _shares.Add(new ShareOutput(candidate, capture, offer.Name, offer.AddressText, row, statusHandler, faultHandler));
+            if (row is not null) row.IsConnected = true;
+            client = null;
+            capture = null;
+            _vm.SetShareStatus(PrimarySource!.GetStatus());
+            _vm.SetMessage(_shares.Count == 1
+                ? $"已连接到 {offer.Name}。可继续点击其他输出端的「选择」。"
+                : $"已连接到 {offer.Name}，当前共 {_shares.Count} 个输出端。");
+            UpdateTrayText();
+        }
+        catch (Exception ex)
+        {
+            if (client is not null && capture is not null)
             {
-                capture = CreateCapture();
-                var candidate = new SourceClient(_settings.DeviceName, "windows", capture, _settings.PreferredQuality);
-                client = candidate;
-                Action<SourceClientStatus> statusHandler = status => Source_StatusChanged(candidate, status);
-                Action<string> faultHandler = message => Source_Faulted(candidate, message);
-                candidate.StatusChanged += statusHandler;
-                candidate.Faulted += faultHandler;
-                await candidate.ConnectAsync(offer);
-                _shares.Add(new ShareOutput(candidate, capture, offer.Name, offer.AddressText, statusHandler, faultHandler));
-                client = null;
-                capture = null;
+                try { await client.DisposeAsync(); } catch { /* ignore */ }
+                capture.Dispose();
             }
-            catch (Exception ex)
+            if (row is not null) row.IsConnected = false;
+            if (_shares.Count == 0)
             {
-                if (client is not null && capture is not null)
-                {
-                    // Handlers were attached to the failed candidate; the object is discarded.
-                    try { await client.DisposeAsync(); } catch { /* ignore */ }
-                    capture.Dispose();
-                }
-                failures.Add($"{offer.Name}: {ex.Message}");
+                _vm.SetShareStatus(new SourceClientStatus(
+                    SourceState.Error, _settings.DeviceName, offer.Name, offer.AddressText,
+                    offer.Mode, ex.Message, -1, 0, 0, 0, false));
+                _vm.SetMessage("共享失败：" + ex.Message);
+            }
+            else
+            {
+                _vm.SetMessage($"连接 {offer.Name} 失败：{ex.Message}");
             }
         }
+        finally
+        {
+            _connectingShare = false;
+            if (row is not null) row.IsBusy = false;
+            _vm.SetBusy(false);
+            HostToggleButton.IsEnabled = true;
+        }
+    }
+
+    private async Task DisconnectOutputAsync(DiscoveredHostViewModel row)
+    {
+        var share = _shares.FirstOrDefault(s => ReferenceEquals(s.Row, row));
+        if (share is null) return;
+        _shares.Remove(share);
+        share.Client.StatusChanged -= share.StatusHandler;
+        share.Client.Faulted -= share.FaultHandler;
+        try { await share.Client.DisconnectAsync(); } catch { /* ignore */ }
+        try { await share.Client.DisposeAsync(); } catch { /* ignore */ }
+        share.Capture.Dispose();
+        row.IsConnected = false;
+        row.IsBusy = false;
 
         if (_shares.Count == 0)
         {
-            _vm.SetShareStatus(new SourceClientStatus(
-                SourceState.Error, _settings.DeviceName, offers[0].Name, offers[0].AddressText,
-                offers[0].Mode, failures.FirstOrDefault() ?? "无法连接输出端", -1, 0, 0, 0, false));
-            _vm.SetMessage("共享失败：" + (failures.FirstOrDefault() ?? "无法连接输出端"));
+            _vm.SetShareIdle();
+            UpdateSourceControls(SourceState.Idle);
+            _vm.SetMessage("已断开最后一个输出端，共享已停止。");
         }
         else
         {
             _vm.SetShareStatus(PrimarySource!.GetStatus());
-            string suffix = failures.Count == 0
-                ? ""
-                : $"；{failures.Count} 个输出端连接失败：{string.Join("；", failures)}";
-            _vm.SetMessage($"正在把本机声音送到 {_shares.Count} 个输出端{suffix}。窗口关闭后会继续在托盘共享。");
-            UpdateTrayText();
+            _vm.SetMessage($"已断开 {row.Name}，当前还剩 {_shares.Count} 个输出端。");
         }
-
-        _connectingShare = false;
-        _vm.SetBusy(false);
-        HostToggleButton.IsEnabled = true;
-        SharePrimaryButton.IsEnabled = true;
+        UpdateTrayText();
     }
 
     private void Source_StatusChanged(SourceClient client, SourceClientStatus status)
@@ -533,6 +532,11 @@ public partial class MainWindow : Window
             try { await share.Client.DisconnectAsync(); } catch { /* ignore */ }
             try { await share.Client.DisposeAsync(); } catch { /* ignore */ }
             share.Capture.Dispose();
+            if (share.Row is not null)
+            {
+                share.Row.IsConnected = false;
+                share.Row.IsBusy = false;
+            }
 
             if (_shares.Count == 0)
             {
@@ -562,6 +566,11 @@ public partial class MainWindow : Window
                 try { await share.Client.DisconnectAsync(); } catch { /* ignore */ }
                 try { await share.Client.DisposeAsync(); } catch { /* ignore */ }
                 share.Capture.Dispose();
+                if (share.Row is not null)
+                {
+                    share.Row.IsConnected = false;
+                    share.Row.IsBusy = false;
+                }
             }
         }
         finally
