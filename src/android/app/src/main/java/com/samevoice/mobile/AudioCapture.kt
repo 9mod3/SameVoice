@@ -15,6 +15,74 @@ interface PcmCapture {
 }
 
 /**
+ * Multi-output source support: one AudioRecord feeds several SourceEngine
+ * sessions. The first open starts the underlying capture, and the last close
+ * stops it.
+ */
+class SharedPcmCapture(private val underlying: PcmCapture) {
+    private data class Sink(
+        val onData: (ShortArray, Long) -> Unit,
+        val onError: (String) -> Unit
+    )
+
+    private val gate = Any()
+    private val sinks = LinkedHashMap<Int, Sink>()
+    private var nextId = 1
+    private var started = false
+
+    fun open(onData: (ShortArray, Long) -> Unit, onError: (String) -> Unit): Int {
+        synchronized(gate) {
+            val id = nextId++
+            sinks[id] = Sink(onData, onError)
+            if (!started) {
+                try {
+                    underlying.start(::dispatchData, ::dispatchError)
+                    started = true
+                } catch (t: Throwable) {
+                    sinks.remove(id)
+                    throw t
+                }
+            }
+            return id
+        }
+    }
+
+    fun close(id: Int) {
+        synchronized(gate) {
+            sinks.remove(id)
+            if (started && sinks.isEmpty()) {
+                started = false
+                try { underlying.stop() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun stopAll() {
+        synchronized(gate) {
+            sinks.clear()
+            if (started) {
+                started = false
+                try { underlying.stop() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun dispatchData(samples: ShortArray, timestampUs: Long) {
+        val snapshot = synchronized(gate) { sinks.values.toList() }
+        for (sink in snapshot) {
+            try { sink.onData(samples, timestampUs) } catch (_: Throwable) {}
+        }
+    }
+
+    private fun dispatchError(message: String) {
+        val snapshot = synchronized(gate) { sinks.values.toList() }
+        for (sink in snapshot) {
+            try { sink.onError(message) } catch (_: Throwable) {}
+        }
+    }
+}
+
+/**
  * Captures internal app audio with MediaProjection + AudioPlaybackCapture.
  * Calls are made on a dedicated audio-priority thread.
  */

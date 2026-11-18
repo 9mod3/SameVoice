@@ -26,6 +26,7 @@ object ServiceHub {
     @Volatile var hostStarting = false
     @Volatile var hostError: String? = null
     @Volatile var source: SourceEngine? = null
+    @Volatile var sourceGroup: SourceGroup? = null
     @Volatile var shareRunning = false
     @Volatile var shareStarting = false
     @Volatile var shareError: String? = null
@@ -305,6 +306,8 @@ class ShareService : Service() {
     companion object {
         const val ACTION_START = "START"
         const val ACTION_STOP = "STOP"
+        const val ACTION_CONNECT = "CONNECT"
+        const val ACTION_DISCONNECT = "DISCONNECT"
         const val EXTRA_ADDRESS = "address"
         const val EXTRA_PORT = "port"
         const val EXTRA_HOST_NAME = "hostName"
@@ -322,6 +325,8 @@ class ShareService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var projection: MediaProjection? = null
     private var capture: PcmCapture? = null
+    private var sharedCapture: SharedPcmCapture? = null
+    private var group: SourceGroup? = null
     private var monitor: Thread? = null
     private var notifier: Thread? = null
     private var starting = false
@@ -348,6 +353,8 @@ class ShareService : Service() {
                     stopEverything()
                 }
             }
+            ACTION_CONNECT -> connectAdditional(intent)
+            ACTION_DISCONNECT -> disconnectOne(intent)
         }
         return START_NOT_STICKY
     }
@@ -423,8 +430,10 @@ class ShareService : Service() {
             return
         }
         capture = audioCapture
-        val engine = SourceEngine(name)
-        ServiceHub.source = engine
+        val shared = SharedPcmCapture(audioCapture)
+        sharedCapture = shared
+        val sourceGroup = SourceGroup(name, shared)
+        group = sourceGroup
         val offer = HostOffer(
             roomId = "", name = hostName, platform = "android",
             address = address, tcpPort = port, mode = mode, sources = 0, pinRequired = false
@@ -432,16 +441,18 @@ class ShareService : Service() {
 
         worker.execute {
             try {
-                engine.connectAndStart(offer, audioCapture)
+                val engine = sourceGroup.connect(offer)
+                ServiceHub.source = engine
                 if (stopping) {
-                    engine.stop()
+                    sourceGroup.stopAll()
                     return@execute
                 }
+                ServiceHub.sourceGroup = sourceGroup
                 ServiceHub.shareRunning = true
                 isRunning = true
                 starting = false
                 ServiceHub.shareStarting = false
-                updateNotification("正在共享本机声音", engine.status())
+                updateNotification("正在共享本机声音", sourceGroup.status())
                 startMonitor()
             } catch (t: Throwable) {
                 starting = false
@@ -455,16 +466,66 @@ class ShareService : Service() {
         }
     }
 
+    private fun offerFromIntent(intent: Intent): HostOffer? {
+        val address = intent.getStringExtra(EXTRA_ADDRESS) ?: return null
+        return HostOffer(
+            roomId = "manual",
+            name = intent.getStringExtra(EXTRA_HOST_NAME) ?: "SameVoice 输出端",
+            platform = "unknown",
+            address = address,
+            tcpPort = intent.getIntExtra(EXTRA_PORT, Protocol.CONTROL_PORT),
+            mode = HostMode.fromWire(intent.getStringExtra(EXTRA_MODE)),
+            sources = 0,
+            pinRequired = false
+        )
+    }
+
+    private fun connectAdditional(intent: Intent) {
+        val offer = offerFromIntent(intent) ?: return
+        val sourceGroup = group ?: run {
+            ServiceHub.shareError = "共享服务尚未启动"
+            return
+        }
+        worker.execute {
+            try {
+                val engine = sourceGroup.connect(offer)
+                if (ServiceHub.source == null) ServiceHub.source = engine
+                ServiceHub.shareError = null
+                updateNotification("正在共享本机声音", sourceGroup.status())
+            } catch (t: Throwable) {
+                ServiceHub.shareError = "连接 ${offer.name} 失败：${t.message ?: t.javaClass.simpleName}"
+            }
+        }
+    }
+
+    private fun disconnectOne(intent: Intent) {
+        val offer = offerFromIntent(intent) ?: return
+        val sourceGroup = group ?: return
+        worker.execute {
+            sourceGroup.disconnect(offer)
+            if (sourceGroup.status().state == ShareState.IDLE) {
+                Handler(Looper.getMainLooper()).post { stopEverything() }
+            } else {
+                updateNotification("正在共享本机声音", sourceGroup.status())
+            }
+        }
+    }
+
     private fun startMonitor() {
         if (!monitorStarted.compareAndSet(false, true)) return
         monitor = Thread({
             var lastText = ""
             while (isRunning && !stopping) {
                 try { Thread.sleep(1800) } catch (_: InterruptedException) { break }
-                val engine = ServiceHub.source ?: break
-                val status = engine.status()
+                val status = ServiceHub.sourceGroup?.status()
+                    ?: ServiceHub.source?.status()
+                    ?: break
                 if (status.state == ShareState.ERROR) {
                     ServiceHub.shareError = status.message
+                    Handler(Looper.getMainLooper()).post { stopEverything() }
+                    break
+                }
+                if (status.state == ShareState.IDLE) {
                     Handler(Looper.getMainLooper()).post { stopEverything() }
                     break
                 }
@@ -553,8 +614,12 @@ class ShareService : Service() {
         isRunning = false
         ServiceHub.shareRunning = false
         ServiceHub.shareStarting = false
-        try { ServiceHub.source?.stop() } catch (_: Exception) {}
+        try { group?.stopAll() } catch (_: Exception) {}
+        group = null
+        ServiceHub.sourceGroup = null
         ServiceHub.source = null
+        try { sharedCapture?.stopAll() } catch (_: Exception) {}
+        sharedCapture = null
         try { capture?.stop() } catch (_: Exception) {}
         capture = null
         try { projection?.stop() } catch (_: Exception) {}
@@ -569,8 +634,12 @@ class ShareService : Service() {
         isRunning = false
         ServiceHub.shareRunning = false
         ServiceHub.shareStarting = false
-        try { ServiceHub.source?.stop() } catch (_: Exception) {}
+        try { group?.stopAll() } catch (_: Exception) {}
+        group = null
+        ServiceHub.sourceGroup = null
         ServiceHub.source = null
+        try { sharedCapture?.stopAll() } catch (_: Exception) {}
+        sharedCapture = null
         try { capture?.stop() } catch (_: Exception) {}
         capture = null
         try { projection?.stop() } catch (_: Exception) {}

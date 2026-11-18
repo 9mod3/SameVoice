@@ -65,6 +65,8 @@ class SourceEngine(private val deviceName: String) {
     private var writer: BufferedWriter? = null
     private var udp: DatagramSocket? = null
     private var capture: PcmCapture? = null
+    private var sharedCapture: SharedPcmCapture? = null
+    private var sharedSinkId = -1
     private var session = 0
     private var token = 0L
     private var sequence = 0
@@ -91,6 +93,18 @@ class SourceEngine(private val deviceName: String) {
      * Blocking setup. Must run on a background thread.
      */
     fun connectAndStart(offer: HostOffer, pcmCapture: PcmCapture) {
+        connectAndStartInternal(offer, pcmCapture, null)
+    }
+
+    fun connectAndStart(offer: HostOffer, sharedCapture: SharedPcmCapture) {
+        connectAndStartInternal(offer, null, sharedCapture)
+    }
+
+    private fun connectAndStartInternal(
+        offer: HostOffer,
+        pcmCapture: PcmCapture?,
+        shared: SharedPcmCapture?
+    ) {
         if (state != ShareState.IDLE) throw IllegalStateException("共享已经启动")
         if (stopping) throw IllegalStateException("共享已取消")
         hostName = offer.name
@@ -125,7 +139,7 @@ class SourceEngine(private val deviceName: String) {
             audio.soTimeout = 500
             audio.sendBufferSize = 256 * 1024
             udp = audio
-            capture = pcmCapture
+            if (pcmCapture != null) capture = pcmCapture
 
             startThread("sv-source-control") { controlLoop() }
             startThread("sv-source-pong") { pongLoop() }
@@ -138,7 +152,12 @@ class SourceEngine(private val deviceName: String) {
             }
 
             sharing = true
-            pcmCapture.start(::onPcm, ::onCaptureError)
+            if (shared != null) {
+                sharedCapture = shared
+                sharedSinkId = shared.open(::onPcm, ::onCaptureError)
+            } else if (pcmCapture != null) {
+                pcmCapture.start(::onPcm, ::onCaptureError)
+            }
             startThread("sv-source-send") { sendLoop() }
             startThread("sv-source-heartbeat") { heartbeatLoop() }
             startThread("sv-source-ping") { pingLoop() }
@@ -166,7 +185,13 @@ class SourceEngine(private val deviceName: String) {
         if (!cleanupOnce.compareAndSet(false, true)) return
         running = false
         sharing = false
-        try { capture?.stop() } catch (_: Exception) {}
+        if (sharedSinkId >= 0) {
+            try { sharedCapture?.close(sharedSinkId) } catch (_: Exception) {}
+            sharedSinkId = -1
+        } else {
+            try { capture?.stop() } catch (_: Exception) {}
+        }
+        sharedCapture = null
         capture = null
         try { socket?.close() } catch (_: Exception) {}
         try { udp?.close() } catch (_: Exception) {}
@@ -392,5 +417,86 @@ class SourceEngine(private val deviceName: String) {
             start()
         }
         threads.add(thread)
+    }
+}
+
+/**
+ * Multi-output source session. All engines share one PcmCapture; each engine
+ * keeps its own control connection, clock sync, UDP socket and sequence.
+ */
+class SourceGroup(
+    private val deviceName: String,
+    private val sharedCapture: SharedPcmCapture
+) {
+    private val gate = Any()
+    private val engines = LinkedHashMap<String, SourceEngine>()
+
+    private fun key(offer: HostOffer): String = "${offer.address}:${offer.tcpPort}"
+
+    fun connect(offer: HostOffer): SourceEngine {
+        val k = key(offer)
+        synchronized(gate) { engines[k]?.let { return it } }
+        val engine = SourceEngine(deviceName)
+        engine.connectAndStart(offer, sharedCapture)
+        synchronized(gate) {
+            engines[k] = engine
+        }
+        return engine
+    }
+
+    fun disconnect(offer: HostOffer) {
+        val engine = synchronized(gate) { engines.remove(key(offer)) } ?: return
+        engine.stop()
+    }
+
+    fun isConnected(offer: HostOffer): Boolean =
+        synchronized(gate) { engines.containsKey(key(offer)) }
+
+    fun connectedKeys(): Set<String> = synchronized(gate) { engines.keys.toSet() }
+
+    fun stopAll() {
+        val all = synchronized(gate) {
+            val copy = engines.values.toList()
+            engines.clear()
+            copy
+        }
+        for (engine in all) {
+            try { engine.stop() } catch (_: Exception) {}
+        }
+    }
+
+    fun status(): ShareStatus {
+        val live = synchronized(gate) {
+            val bad = engines.filterValues { it.status().state == ShareState.ERROR }
+            for ((k, engine) in bad) {
+                engines.remove(k)
+                try { engine.stop() } catch (_: Exception) {}
+            }
+            engines.values.map { it.status() }
+        }
+        if (live.isEmpty()) {
+            return ShareStatus(
+                state = ShareState.IDLE, deviceName = deviceName,
+                hostName = "", hostAddress = "", mode = HostMode.BALANCED,
+                message = "未连接输出端", rttMs = -1.0,
+                packetsSent = 0, bytesSent = 0, droppedPackets = 0, isSharing = false
+            )
+        }
+        val primary = live.firstOrNull { it.state == ShareState.SHARING } ?: live.first()
+        val anySharing = live.any { it.state == ShareState.SHARING }
+        val rtt = live.map { it.rttMs }.filter { it >= 0 }
+        return ShareStatus(
+            state = if (anySharing) ShareState.SHARING else primary.state,
+            deviceName = deviceName,
+            hostName = if (live.size > 1) "${live.size} 个输出端" else primary.hostName,
+            hostAddress = if (live.size > 1) "" else primary.hostAddress,
+            mode = primary.mode,
+            message = if (live.size > 1) "正在共享到 ${live.size} 个输出端" else primary.message,
+            rttMs = if (rtt.isEmpty()) -1.0 else rtt.average(),
+            packetsSent = live.sumOf { it.packetsSent },
+            bytesSent = live.sumOf { it.bytesSent },
+            droppedPackets = live.sumOf { it.droppedPackets },
+            isSharing = anySharing
+        )
     }
 }

@@ -4,13 +4,14 @@ apply plugin: 'kotlin-android'
 android {
     namespace 'com.samevoice.mobile'
     compileSdk 34
+    buildToolsVersion '34.0.0'
 
     defaultConfig {
         applicationId 'com.samevoice.mobile'
         minSdk 29
         targetSdk 34
-        versionCode 19
-        versionName '1.1.13'
+        versionCode 20
+        versionName '1.1.14'
     }
 
     signingConfigs {

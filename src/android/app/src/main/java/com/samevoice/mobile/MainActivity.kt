@@ -57,7 +57,11 @@ class MainActivity : Activity() {
     private var pendingHost: HostOffer? = null
     private var roleHost = true
     private var lastShareErrorShown: String? = null
+    private var lastHostConnectionSignature: String = ""
     private var lastHostErrorShown: String? = null
+
+    private val hasShareSource: Boolean
+        get() = ServiceHub.sourceGroup != null || ServiceHub.source != null
     private val executor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
 
@@ -547,7 +551,7 @@ class MainActivity : Activity() {
         }
         hero.addView(shareTitle)
         shareDescription = text(
-            "先扫描并选择一台输出设备，再授权系统捕获本机正在播放的内部音频。",
+            "先扫描输出端，点「选择」连接并授权系统捕获本机正在播放的内部音频。",
             11.8f, Palette.SECONDARY
         ).apply {
             margins(top = 12)
@@ -557,7 +561,7 @@ class MainActivity : Activity() {
 
         shareActionButton = primaryButton("扫描输出设备")
         shareActionButton.setOnClickListener {
-            if (ServiceHub.source != null || ServiceHub.shareStarting) stopSharing() else scanHosts()
+            if (hasShareSource || ServiceHub.shareStarting) stopSharing() else scanHosts()
         }
         shareActionButton.margins(top = 18)
         hero.addView(shareActionButton)
@@ -750,7 +754,7 @@ class MainActivity : Activity() {
         sharePage.visibility = if (host) View.GONE else View.VISIBLE
         headerSubtitle.text = if (host) "局域网多设备音频汇聚" else "把本机声音送到输出设备"
         updateRoleTabs()
-        if (!host && hosts.isEmpty() && !scanning && ServiceHub.source == null) scanHosts()
+        if (!host && hosts.isEmpty() && !scanning && !hasShareSource) scanHosts()
         refreshAll()
     }
 
@@ -1053,8 +1057,21 @@ class MainActivity : Activity() {
     }
 
     private fun refreshShare() {
-        val engine = ServiceHub.source
-        val status = engine?.status()
+        val sourceGroup = ServiceHub.sourceGroup
+        val engine = sourceGroup ?: ServiceHub.source
+        val status = sourceGroup?.status() ?: ServiceHub.source?.status()
+        if (::shareHostsContainer.isInitialized && sourceGroup != null) {
+            val signature = sourceGroup.connectedKeys().sorted().joinToString("|")
+            if (signature != lastHostConnectionSignature) {
+                lastHostConnectionSignature = signature
+                shareHostsContainer.tag = null
+                refreshHostsList()
+            }
+        } else if (::shareHostsContainer.isInitialized && lastHostConnectionSignature.isNotEmpty()) {
+            lastHostConnectionSignature = ""
+            shareHostsContainer.tag = null
+            refreshHostsList()
+        }
         if (status != null) {
             when (status.state) {
                 ShareState.CONNECTING -> {
@@ -1084,7 +1101,7 @@ class MainActivity : Activity() {
                 ShareState.IDLE -> {
                     setShareBadge("待机", Palette.MUTED, 0xFF1D2A44.toInt(), 0xFFC6D6F2.toInt())
                     shareTitle.text = "把本机声音，\n送到输出端。"
-                    shareDescription.text = "先扫描并选择一台输出设备，再授权系统捕获本机正在播放的内部音频。"
+                    shareDescription.text = "先扫描输出端，点「选择」连接并授权系统捕获本机正在播放的内部音频。"
                     setShareButton("扫描输出设备", true)
                 }
             }
@@ -1114,7 +1131,7 @@ class MainActivity : Activity() {
         } else {
             setShareBadge("待机", Palette.MUTED, 0xFF1D2A44.toInt(), 0xFFC6D6F2.toInt())
             shareTitle.text = "把本机声音，\n送到输出端。"
-            shareDescription.text = "先扫描并选择一台输出设备，再授权系统捕获本机正在播放的内部音频。"
+            shareDescription.text = "先扫描输出端，点「选择」连接并授权系统捕获本机正在播放的内部音频。"
             setShareButton("扫描输出设备", true)
             shareDetailsCard.visibility = View.GONE
             val error = ServiceHub.shareError
@@ -1208,11 +1225,21 @@ class MainActivity : Activity() {
         row.addView(box, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginStart = dp(10)
         })
-        val connect = secondaryButton("连接")
+        val connect = secondaryButton(
+            if (ServiceHub.sourceGroup?.isConnected(offer) == true) "已选" else "选择"
+        )
         connect.textSize = 11f
         connect.setPadding(dp(14), dp(8), dp(14), dp(8))
         connect.minHeight = dp(36)
-        connect.setOnClickListener { beginConnect(offer) }
+        connect.setOnClickListener {
+            if (ServiceHub.sourceGroup?.isConnected(offer) == true) {
+                disconnectHost(offer)
+            } else if (ServiceHub.sourceGroup != null && ServiceHub.shareRunning) {
+                connectAdditionalHost(offer)
+            } else {
+                beginConnect(offer)
+            }
+        }
         row.addView(connect)
         return row
     }
@@ -1234,7 +1261,7 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- actions
 
     private fun startHost() {
-        if (ServiceHub.source != null || ServiceHub.shareStarting) {
+        if (hasShareSource || ServiceHub.shareStarting) {
             toast("请先停止共享本机声音")
             return
         }
@@ -1294,7 +1321,7 @@ class MainActivity : Activity() {
 
     private fun scanHosts() {
         if (scanning) return
-        if (ServiceHub.source != null || ServiceHub.shareStarting) {
+        if (hasShareSource || ServiceHub.shareStarting) {
             toast("请先停止当前共享")
             return
         }
@@ -1356,7 +1383,7 @@ class MainActivity : Activity() {
             toast("当前正在作为输出端，请先停止输出")
             return
         }
-        if (ServiceHub.source != null || ServiceHub.shareStarting) {
+        if (hasShareSource || ServiceHub.shareStarting) {
             toast("已经在共享中")
             return
         }
@@ -1381,7 +1408,47 @@ class MainActivity : Activity() {
             roomId = "manual", name = "手动输出端 $address", platform = "unknown",
             address = address, tcpPort = port, mode = selectedMode, sources = 0, pinRequired = false
         )
-        beginConnect(offer)
+        if (ServiceHub.sourceGroup != null && ServiceHub.shareRunning) {
+            connectAdditionalHost(offer)
+        } else {
+            beginConnect(offer)
+        }
+    }
+
+    private fun hostIntent(action: String, offer: HostOffer): Intent =
+        Intent(this, ShareService::class.java).apply {
+            this.action = action
+            putExtra(ShareService.EXTRA_ADDRESS, offer.address)
+            putExtra(ShareService.EXTRA_PORT, offer.tcpPort)
+            putExtra(ShareService.EXTRA_HOST_NAME, offer.name)
+            putExtra(ShareService.EXTRA_MODE, offer.mode.wire)
+        }
+
+    private fun connectAdditionalHost(offer: HostOffer) {
+        ServiceHub.clearShareError()
+        try {
+            startService(hostIntent(ShareService.ACTION_CONNECT, offer))
+            toast("正在连接 ${offer.name}…")
+            handler.postDelayed({
+                shareHostsContainer.tag = null
+                refreshHostsList()
+            }, 500)
+        } catch (t: Throwable) {
+            toast("连接失败：${t.message}")
+        }
+    }
+
+    private fun disconnectHost(offer: HostOffer) {
+        try {
+            startService(hostIntent(ShareService.ACTION_DISCONNECT, offer))
+            toast("正在断开 ${offer.name}…")
+            handler.postDelayed({
+                shareHostsContainer.tag = null
+                refreshHostsList()
+            }, 500)
+        } catch (t: Throwable) {
+            toast("断开失败：${t.message}")
+        }
     }
 
     private fun beginConnect(offer: HostOffer) {
@@ -1389,7 +1456,7 @@ class MainActivity : Activity() {
             toast("当前正在作为输出端，不能同时共享本机声音")
             return
         }
-        if (ServiceHub.source != null || ServiceHub.shareStarting) {
+        if (hasShareSource || ServiceHub.shareStarting) {
             toast("已经在共享中")
             return
         }
