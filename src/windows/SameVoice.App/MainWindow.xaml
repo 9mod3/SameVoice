@@ -120,7 +120,7 @@
                                            TextWrapping="Wrap" FontSize="10.5" Foreground="#68748A" LineHeight="17" />
                             </StackPanel>
                         </Border>
-                        <TextBlock x:Name="EditionText" Text="SameVoice 1.5.1" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
+                        <TextBlock x:Name="EditionText" Text="SameVoice 1.6.0" FontSize="9.5" Foreground="#3F4A5F" Margin="4,0,0,0" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -586,8 +586,12 @@
                                                 <TextBlock Text="附近的输出端" FontSize="14" FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding HostCountText, Mode=OneWay}" Style="{StaticResource SecondaryText}" Margin="0,5,0,0" />
                                             </StackPanel>
-                                            <Button Style="{StaticResource SecondaryButton}" Content="扫描"
-                                                    Height="34" Padding="16,0" HorizontalAlignment="Right" Click="ScanHosts_Click" />
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                <Button Style="{StaticResource SecondaryButton}" Content="连接所选"
+                                                        Height="34" Padding="14,0" Margin="0,0,8,0" Click="ConnectSelectedHosts_Click" />
+                                                <Button Style="{StaticResource SecondaryButton}" Content="扫描"
+                                                        Height="34" Padding="16,0" Click="ScanHosts_Click" />
+                                            </StackPanel>
                                         </Grid>
                                         <TextBlock Text="正在扫描局域网…" Style="{StaticResource EmptyText}"
                                                    Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}" />
@@ -621,8 +625,8 @@
                                                                            Foreground="#647189" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                                                             </StackPanel>
                                                             <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
-                                                                    Content="连接" Height="34" Padding="16,0"
-                                                                    Tag="{Binding}" Click="ConnectHost_Click" />
+                                                                    Content="{Binding SelectText, Mode=OneWay}" Height="34" Padding="14,0"
+                                                                    Tag="{Binding}" Click="ToggleHost_Click" />
                                                         </Grid>
                                                     </Border>
                                                 </DataTemplate>

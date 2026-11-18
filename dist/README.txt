@@ -1,4 +1,4 @@
-同声 SameVoice（双路由 1.5.2 / 本机静音 1.2.0）
+同声 SameVoice（双路由 1.6.0 / 本机静音 1.2.0）
 ================================================
 
 这次提供两个 Windows 版，Android 输出端共用 1.1.13。
@@ -17,18 +17,24 @@
   - Android 端「全满」按钮可把主音量和每路音源都设到 100%。
   - 不做自动音量补偿，不包含双路由采集设备选择。
 
-二、双路由版（DualRoute 1.5.2）
+二、双路由版（DualRoute 1.6.0）
 --------------------------------
 文件：
   versions/dualroute/SameVoice-Windows-Portable.zip
 
-虚拟声卡安装引导（1.5.1 合并）：
+虚拟声卡安装引导：
   - 共享页双路由面板自动检测 Scream / VB-CABLE / Voicemeeter。
   - 未检测到虚拟声卡时显示提示，点「安装引导」打开向导。
   - 向导提供三种方案：VB-CABLE、Voicemeeter、Scream，每项含下载入口和安装步骤。
   - 检测到虚拟声卡后可一键设为采集设备，并把本机输出改为物理扬声器。
   - 不捆绑、不静默安装第三方驱动；安装后点「重新检测」。
   - 仍允许同设备静音，但会提示可能连带切断 Android 输出。
+
+多输出（1.6.0 新增）：
+  - 共享页可勾选多台输出端，点「连接所选」同时连接。
+  - 每台输出端独立时钟同步、独立发送、独立断开。
+  - 当前先支持 Windows 音源；Android 音源仍为单输出。
+  - 只保证同时出声，多台严格同步见 docs/MULTI-OUTPUT.md。
 
 主音量：
   - 输出端主音量范围改为 0–200%。
@@ -102,7 +108,7 @@ Scream 是第三方 Windows 内核虚拟声卡，本项目不打包驱动。
 
 SHA-256:
   41F72449D23C3356A6C3AC777B64F8C618789486A91FF3FD4CBC288CE8E2B262  versions/mute/SameVoice-Windows-Portable.zip
-  9AC07355EC90D1970B492F7EC624D8E57661B9DDAE66372319C9932F27FB2A8A  versions/dualroute/SameVoice-Windows-Portable.zip
+  02E1633062AD0F6FEBC368DCC68C7969AD890F524F00047E5EDB96294C3CC2C3  versions/dualroute/SameVoice-Windows-Portable.zip
   B11969949A0A08B0A32D442E15F3D0D1F772E60E127A9E626082F6EB3CA78883  SameVoice-Android-1.1.13.zip
   16BBD0512A86C728C22347ACC5B820AA4DEC49A154763FF60AD544EA10AD4A16  android/SameVoice-1.1.13.apk
   8C2FB82533EBD61D047835F5C0F86B077E495482F58BDA8F51AE06B36B2F597C  android/SameVoice-1.1.13-debug.apk

@@ -81,8 +81,10 @@ public sealed class SourceRowViewModel : INotifyPropertyChanged
     }
 }
 
-public sealed class DiscoveredHostViewModel
+public sealed class DiscoveredHostViewModel : INotifyPropertyChanged
 {
+    private bool _isSelected;
+
     public HostOffer Offer { get; }
     public string Name { get; }
     public string Details { get; }
@@ -91,6 +93,20 @@ public sealed class DiscoveredHostViewModel
     public string Initial { get; }
     public string Address { get; }
     public string DetailsLine => $"{Details} · {SourceText}";
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectText)));
+        }
+    }
+    public string SelectText => IsSelected ? "已选" : "选择";
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public DiscoveredHostViewModel(HostOffer offer)
     {
@@ -129,7 +145,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool _isShareBusy;
     private bool _isScanning;
     private string _shareStatusTitle = "未共享本机声音";
-    private string _shareStatusDetail = "先扫描并选择一台输出设备，然后授权捕获本机正在播放的声音。";
+    private string _shareStatusDetail = "先扫描并选择一台或多台输出设备，然后授权捕获本机正在播放的声音。";
     private Brush _shareStatusBrush = MutedBrush;
     private string _shareButtonText = "扫描输出设备";
     private string _shareHostName = "尚未连接";
@@ -275,7 +291,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             SourceState.Syncing => "通过 NTP 式往返校准，让多台设备的声音对齐。",
             SourceState.Sharing => $"声音已送往 {status.HostName}，关闭窗口后仍会在托盘继续。",
             SourceState.Error => status.Message,
-            _ => "先扫描并选择一台输出设备，然后授权捕获本机正在播放的声音。"
+            _ => "先扫描并选择一台或多台输出设备，然后授权捕获本机正在播放的声音。"
         };
         ShareStatusBrush = status.State switch
         {
@@ -304,7 +320,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IsShareActive = false;
         IsShareBusy = false;
         ShareStatusTitle = "未共享本机声音";
-        ShareStatusDetail = "先扫描并选择一台输出设备，然后授权捕获本机正在播放的声音。";
+        ShareStatusDetail = "先扫描并选择一台或多台输出设备，然后授权捕获本机正在播放的声音。";
         ShareStatusBrush = MutedBrush;
         ShareHostName = "尚未连接";
         ShareNetworkText = "—";

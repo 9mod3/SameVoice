@@ -25,9 +25,8 @@ public partial class MainWindow : Window
     private readonly MainViewModel _vm = new();
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly DispatcherTimer _timer;
+    private readonly List<ShareOutput> _shares = new();
     private HostEngine? _host;
-    private SourceClient? _source;
-    private IAudioCapture? _capture;
     private NativeTrayIcon? _tray;
     private Forms.ContextMenuStrip? _trayMenu;
     private bool _ready;
@@ -42,6 +41,17 @@ public partial class MainWindow : Window
     private bool _trayHintShown;
     private int _currentPage;
     private bool _bufferUpdating;
+
+    private sealed record ShareOutput(
+        SourceClient Client,
+        IAudioCapture Capture,
+        string HostName,
+        string Address,
+        Action<SourceClientStatus> StatusHandler,
+        Action<string> FaultHandler);
+
+    private bool HasShares => _shares.Count > 0;
+    private SourceClient? PrimarySource => _shares.FirstOrDefault()?.Client;
     private readonly List<QualityOption> _qualityOptions = new()
     {
         new(AudioQuality.Standard, AudioQuality.Standard.DisplayName()),
@@ -116,11 +126,11 @@ public partial class MainWindow : Window
             try { _vm.SetHostSnapshot(_host.GetSnapshot()); }
             catch (Exception ex) { _vm.SetMessage("刷新状态失败：" + ex.Message); }
         }
-        if (_source is not null)
+        if (HasShares)
         {
             try
             {
-                var status = _source.GetStatus();
+                var status = PrimarySource!.GetStatus();
                 _vm.SetShareStatus(status);
                 UpdateSourceControls(status.State);
             }
@@ -144,7 +154,7 @@ public partial class MainWindow : Window
     private void NavShare_Click(object sender, RoutedEventArgs e)
     {
         ShowPage(1);
-        if (!_hasScanned && _source is null && _host is null)
+        if (!_hasScanned && !HasShares && _host is null)
         {
             _hasScanned = true;
             _ = ScanHostsAsync();
@@ -179,7 +189,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_source is not null || _connectingShare)
+        if (HasShares || _connectingShare)
         {
             MessageBox.Show(this, "请先停止共享本机声音，再启动输出中心。", "同声", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -335,7 +345,7 @@ public partial class MainWindow : Window
 
     private async void SharePrimary_Click(object sender, RoutedEventArgs e)
     {
-        if (_source is not null || _connectingShare)
+        if (HasShares || _connectingShare)
         {
             await StopShareAsync();
             return;
@@ -360,7 +370,7 @@ public partial class MainWindow : Window
 
     private async Task ScanHostsAsync()
     {
-        if (_vm.IsScanning || _connectingShare || _source is not null || _host is not null) return;
+        if (_vm.IsScanning || _connectingShare || HasShares || _host is not null) return;
         _hasScanned = true;
         _vm.SetScanning(true);
         try
@@ -399,97 +409,160 @@ public partial class MainWindow : Window
 
     private async Task ConnectToHostAsync(HostOffer offer)
     {
-        if (_connectingShare || _source is not null) return;
+        var offers = SelectedOffers();
+        if (!offers.Any(o => string.Equals(o.AddressText, offer.AddressText, StringComparison.OrdinalIgnoreCase)))
+            offers.Add(offer);
+        await ConnectToHostsAsync(offers);
+    }
+
+    private List<HostOffer> SelectedOffers() =>
+        _vm.Hosts.Where(h => h.IsSelected).Select(h => h.Offer).ToList();
+
+    private async void ConnectSelectedHosts_Click(object sender, RoutedEventArgs e)
+    {
+        var offers = SelectedOffers();
+        if (offers.Count == 0)
+        {
+            _vm.SetMessage("请先在输出端列表中勾选至少一个设备。");
+            return;
+        }
+        await ConnectToHostsAsync(offers);
+    }
+
+    private void ToggleHost_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: DiscoveredHostViewModel row })
+            row.IsSelected = !row.IsSelected;
+    }
+
+    private async Task ConnectToHostsAsync(IReadOnlyList<HostOffer> offers)
+    {
+        if (_connectingShare || HasShares) return;
         if (_host is not null)
         {
             MessageBox.Show(this, "当前设备正在作为输出端。请先停止输出，再共享本机声音。",
                 "同声", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        if (offers.Count == 0) return;
 
         _connectingShare = true;
         _vm.SetBusy(true);
         HostToggleButton.IsEnabled = false;
         SharePrimaryButton.IsEnabled = false;
         _vm.SetShareStatus(new SourceClientStatus(
-            SourceState.Connecting, _settings.DeviceName, offer.Name, offer.AddressText,
-            offer.Mode, "正在连接输出端…", -1, 0, 0, 0, false));
+            SourceState.Connecting, _settings.DeviceName, offers[0].Name, offers[0].AddressText,
+            offers[0].Mode, $"正在连接 {offers.Count} 个输出端…", -1, 0, 0, 0, false));
 
-        SourceClient? client = null;
-        IAudioCapture? capture = null;
-        try
+        var failures = new List<string>();
+        foreach (var offer in offers)
         {
-            capture = CreateCapture();
-            client = new SourceClient(_settings.DeviceName, "windows", capture, _settings.PreferredQuality);
-            client.StatusChanged += Source_StatusChanged;
-            client.Faulted += Source_Faulted;
-            await client.ConnectAsync(offer);
-            _source = client;
-            _capture = capture;
-            _vm.SetShareStatus(client.GetStatus());
-            _vm.SetMessage($"正在把本机声音送到 {offer.Name}。窗口关闭后会继续在托盘共享。");
+            SourceClient? client = null;
+            IAudioCapture? capture = null;
+            try
+            {
+                capture = CreateCapture();
+                var candidate = new SourceClient(_settings.DeviceName, "windows", capture, _settings.PreferredQuality);
+                client = candidate;
+                Action<SourceClientStatus> statusHandler = status => Source_StatusChanged(candidate, status);
+                Action<string> faultHandler = message => Source_Faulted(candidate, message);
+                candidate.StatusChanged += statusHandler;
+                candidate.Faulted += faultHandler;
+                await candidate.ConnectAsync(offer);
+                _shares.Add(new ShareOutput(candidate, capture, offer.Name, offer.AddressText, statusHandler, faultHandler));
+                client = null;
+                capture = null;
+            }
+            catch (Exception ex)
+            {
+                if (client is not null && capture is not null)
+                {
+                    // Handlers were attached to the failed candidate; the object is discarded.
+                    try { await client.DisposeAsync(); } catch { /* ignore */ }
+                    capture.Dispose();
+                }
+                failures.Add($"{offer.Name}: {ex.Message}");
+            }
+        }
+
+        if (_shares.Count == 0)
+        {
+            _vm.SetShareStatus(new SourceClientStatus(
+                SourceState.Error, _settings.DeviceName, offers[0].Name, offers[0].AddressText,
+                offers[0].Mode, failures.FirstOrDefault() ?? "无法连接输出端", -1, 0, 0, 0, false));
+            _vm.SetMessage("共享失败：" + (failures.FirstOrDefault() ?? "无法连接输出端"));
+        }
+        else
+        {
+            _vm.SetShareStatus(PrimarySource!.GetStatus());
+            string suffix = failures.Count == 0
+                ? ""
+                : $"；{failures.Count} 个输出端连接失败：{string.Join("；", failures)}";
+            _vm.SetMessage($"正在把本机声音送到 {_shares.Count} 个输出端{suffix}。窗口关闭后会继续在托盘共享。");
             UpdateTrayText();
         }
-        catch (Exception ex)
-        {
-            if (client is not null)
-            {
-                client.StatusChanged -= Source_StatusChanged;
-                client.Faulted -= Source_Faulted;
-                try { await client.DisposeAsync(); } catch { /* ignore */ }
-            }
-            capture?.Dispose();
-            _vm.SetShareStatus(new SourceClientStatus(
-                SourceState.Error, _settings.DeviceName, offer.Name, offer.AddressText,
-                offer.Mode, ex.Message, -1, 0, 0, 0, false));
-            _vm.SetMessage("共享失败：" + ex.Message);
-        }
-        finally
-        {
-            _connectingShare = false;
-            _vm.SetBusy(false);
-            HostToggleButton.IsEnabled = true;
-            SharePrimaryButton.IsEnabled = true;
-        }
+
+        _connectingShare = false;
+        _vm.SetBusy(false);
+        HostToggleButton.IsEnabled = true;
+        SharePrimaryButton.IsEnabled = true;
     }
 
-    private void Source_StatusChanged(SourceClientStatus status)
+    private void Source_StatusChanged(SourceClient client, SourceClientStatus status)
     {
         Dispatcher.BeginInvoke(() =>
         {
-            if (_source is null || _disposingShare) return;
-            _vm.SetShareStatus(status);
+            if (_disposingShare) return;
+            var share = _shares.FirstOrDefault(s => s.Client == client);
+            if (share is null) return;
+            if (share == _shares[0])
+                _vm.SetShareStatus(status);
         });
     }
 
-    private void Source_Faulted(string message)
+    private void Source_Faulted(SourceClient client, string message)
     {
         Dispatcher.BeginInvoke(async () =>
         {
-            if (_disposingShare || _source is null) return;
-            _vm.SetMessage("共享中断：" + message);
-            await StopShareAsync(userRequested: false);
+            if (_disposingShare) return;
+            var share = _shares.FirstOrDefault(s => s.Client == client);
+            if (share is null) return;
+            _shares.Remove(share);
+            share.Client.StatusChanged -= share.StatusHandler;
+            share.Client.Faulted -= share.FaultHandler;
+            try { await share.Client.DisconnectAsync(); } catch { /* ignore */ }
+            try { await share.Client.DisposeAsync(); } catch { /* ignore */ }
+            share.Capture.Dispose();
+
+            if (_shares.Count == 0)
+            {
+                _vm.SetMessage("共享中断：" + message);
+                await StopShareAsync(userRequested: false);
+            }
+            else
+            {
+                _vm.SetShareStatus(PrimarySource!.GetStatus());
+                _vm.SetMessage($"输出端 {share.HostName} 中断，其余 {_shares.Count} 路继续共享。");
+            }
         });
     }
 
     private async Task StopShareAsync(bool userRequested = true)
     {
         if (_disposingShare) return;
-        var client = _source;
-        var capture = _capture;
-        _source = null;
-        _capture = null;
+        var shares = _shares.ToList();
+        _shares.Clear();
         _disposingShare = true;
         try
         {
-            if (client is not null)
+            foreach (var share in shares)
             {
-                client.StatusChanged -= Source_StatusChanged;
-                client.Faulted -= Source_Faulted;
-                try { await client.DisconnectAsync(); } catch { /* ignore */ }
-                try { await client.DisposeAsync(); } catch { /* ignore */ }
+                share.Client.StatusChanged -= share.StatusHandler;
+                share.Client.Faulted -= share.FaultHandler;
+                try { await share.Client.DisconnectAsync(); } catch { /* ignore */ }
+                try { await share.Client.DisposeAsync(); } catch { /* ignore */ }
+                share.Capture.Dispose();
             }
-            capture?.Dispose();
         }
         finally
         {
@@ -497,7 +570,7 @@ public partial class MainWindow : Window
         }
         _vm.SetShareIdle();
         UpdateSourceControls(SourceState.Idle);
-        if (userRequested) _vm.SetMessage("已停止共享本机声音。");
+        if (userRequested) _vm.SetMessage($"已停止共享本机声音（{shares.Count} 个输出端）。");
         UpdateTrayText();
     }
 
@@ -623,7 +696,7 @@ public partial class MainWindow : Window
             InitializeDualVolumes();
             UpdateVirtualDeviceHint();
 
-            string suffix = _source is null ? "" : "正在共享时，请停止后重新开始共享以生效。";
+            string suffix = HasShares ? "正在共享时，请停止后重新开始共享以生效。" : "";
             _vm.SetMessage("已保存双路由设备：采集走虚拟声卡，本机输出走物理扬声器。" + suffix);
         }
         catch (Exception ex)
@@ -647,7 +720,7 @@ public partial class MainWindow : Window
         _settings.CaptureDeviceName = info.Name;
         _settings.Save();
         UpdateVirtualDeviceHint();
-        if (_source is not null)
+        if (HasShares)
             _vm.SetMessage("采集设备已保存，下次开始共享时生效。");
     }
 
@@ -708,13 +781,16 @@ public partial class MainWindow : Window
         _settings.DualRouteRemoteGain = e.NewValue;
         _settings.Save();
         DualRemoteGainText.Text = $"{e.NewValue:0}%";
-        if (_capture is WasapiLoopbackCapture capture)
-            capture.ExtraGain = (float)(e.NewValue / 100.0);
+        foreach (var share in _shares)
+        {
+            if (share.Capture is WasapiLoopbackCapture capture)
+                capture.ExtraGain = (float)(e.NewValue / 100.0);
+        }
     }
 
     private void UpdateSourceControls(SourceState state)
     {
-        bool sharing = _source is not null && state == SourceState.Sharing;
+        bool sharing = HasShares && state == SourceState.Sharing;
         LocalMuteButton.Visibility = sharing ? Visibility.Visible : Visibility.Collapsed;
         LocalMuteButton.IsEnabled = sharing;
         LocalMuteButton.Content = _localMuteApplied ? "恢复本机声音" : "本机静音";
@@ -723,10 +799,10 @@ public partial class MainWindow : Window
 
     private void LocalMute_Click(object sender, RoutedEventArgs e)
     {
-        if (_source is null) return;
+        if (!HasShares) return;
         try
         {
-            if (_source.GetStatus().State != SourceState.Sharing) return;
+            if (PrimarySource!.GetStatus().State != SourceState.Sharing) return;
         }
         catch { return; }
 
@@ -775,7 +851,7 @@ public partial class MainWindow : Window
         if (QualityCombo.SelectedItem is not QualityOption option) return;
         _settings.PreferredQuality = option.Value;
         _settings.Save();
-        if (_source is not null)
+        if (HasShares)
             _vm.SetMessage("传输音质已保存，下次开始共享时生效。");
     }
 
@@ -1017,7 +1093,7 @@ public partial class MainWindow : Window
     private void StopAllFromTray()
     {
         if (_host is not null) StopHost();
-        if (_source is not null) _ = StopShareAsync();
+        if (HasShares) _ = StopShareAsync();
         _vm.SetMessage("已停止所有播放。");
     }
 
@@ -1036,13 +1112,15 @@ public partial class MainWindow : Window
         try { _host?.Stop(); } catch { /* ignore */ }
         try { _host?.Dispose(); } catch { /* ignore */ }
         _host = null;
-        if (_source is not null)
+        if (HasShares)
         {
-            try { _source.DisposeAsync().AsTask().Wait(600); } catch { /* ignore */ }
-            _source = null;
+            foreach (var share in _shares)
+            {
+                try { share.Client.DisposeAsync().AsTask().Wait(600); } catch { /* ignore */ }
+                share.Capture.Dispose();
+            }
+            _shares.Clear();
         }
-        _capture?.Dispose();
-        _capture = null;
         _settings.Save();
         try
         {
@@ -1059,7 +1137,7 @@ public partial class MainWindow : Window
         if (_tray is null) return;
         string text = _host is not null
             ? "同声 · 输出端运行中"
-            : _source is not null
+            : HasShares
                 ? "同声 · 正在共享本机声音"
                 : "同声 SameVoice";
         _tray.SetTooltip(text.Length > 63 ? text[..63] : text);
